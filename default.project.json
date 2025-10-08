@@ -1,0 +1,19 @@
+{
+  "name": "luau-physics",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "luau-physics": {
+	"$className": "ModuleScript",
+        "$ignoreUnknownInstances": true
+      },
+
+      "luau-humanoid": {
+	"$className": "ModuleScript",
+        "$ignoreUnknownInstances": true
+      }
+    }
+  }
+}
