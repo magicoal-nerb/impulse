@@ -1,0 +1,274 @@
+--!strict
+
+local Arbiter = require("./narrowphase/Arbiter")
+local Hull = require("./narrowphase/Hull")
+local Bvh = require("./broadphase/Bvh")
+
+local BlockHull = Hull.fromObj(require("./shapes/Cube"))
+local Body = require("./Body")
+
+local FLAG_NO_SLEEP = 1
+
+local SLEEP_THRESHOLD = 1
+local SLEEP_TIMER = 1
+
+export type Arbiter = Arbiter.Arbiter
+export type Body = Body.Body
+export type Bvh = Bvh.Bvh<Body>
+
+export type World = {
+	numActive: number,
+	arbiters: { [number]: Arbiter },
+	active: { [number]: boolean },
+	bodies: { Body },
+	bvh: Bvh,
+}
+
+local World = {}
+World.numActive = 0
+World.bvh = Bvh.new()
+World.bodies = {}
+World.active = {}
+World.arbiters = {}
+
+local function castVector(vec3: Vector3): vector
+	-- casts a vector
+	return vector.create(vec3.X, vec3.Y, vec3.Z)
+end
+
+local function castVector3(vec: vector): Vector3
+	-- helper cast lol
+	return Vector3.new(vec.x, vec.y, vec.z)
+end
+
+local function getShape(part: BasePart): Hull.Obj
+	-- current shape right now is a block, but you can do other stuff
+	-- like wedges tris, etc. however, the biggest limitation are smooth
+	-- objects(because i didn't add incremental manifolds yet and clipping is
+	-- horribly inefficient for smooth shapes)
+	return BlockHull
+end
+
+local function shouldSleep(body: Body): boolean
+	-- checks if the linear velocity isnt much
+	local velocity = body.linearVelocity
+	local angular = body.angularVelocity
+	return vector.dot(velocity, velocity) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
+		and vector.dot(angular, angular) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
+end
+
+function World.addDynamicBody(part: BasePart): Body
+	-- adds a dynamic body to the bvh
+	local body = Body.newDynamic(part, getShape(part))
+	local id = World.bvh:insert(body)
+	World.bodies[id] = body
+	World.active[id] = true
+	part.Anchored = true
+	return body
+end
+
+function World.addStaticBody(part: BasePart): Body
+	-- adds a static body to the bvh
+	local body = Body.newStatic(part, getShape(part))
+	local id = World.bvh:insert(body)
+	World.bodies[id] = body
+	
+	return body
+end
+
+function World.wakeBody(id: number)
+	local body = World.bodies[id]
+	if body.mass == math.huge then
+		-- do not awake objects that are static
+		return
+	end
+	
+	-- set the body to be active
+	World.active[id] = true
+end
+
+function World.markBodyActive(body: Body, state: boolean)
+	-- this makes a body always active, ie.
+	-- it cannot sleep
+	if state then
+		body.flags = bit32.bor(body.flags, FLAG_NO_SLEEP)
+	else
+		body.flags = bit32.band(body.flags, bit32.bnot(FLAG_NO_SLEEP))
+	end
+end
+
+function World.sleepBody(id: number, dt: number)
+	-- this adds onto the sleep timer
+	local body = World.bodies[id]
+	body.sleep = math.min(body.sleep + dt, SLEEP_TIMER)
+	
+	if body.sleep >= SLEEP_TIMER 
+		and not bit32.btest(body.flags, FLAG_NO_SLEEP) then
+		-- set the object to sleep
+		World.active[id] = nil
+	end
+end
+
+local updateArbiter = Arbiter.update
+local getExtentsSize = Body.getExtentsSize
+local padding = vector.one
+function World.broadphase(dt: number)
+	-- this phase requres you to calculate everything... not really lol
+	local arbiters = World.arbiters
+	local bodies = World.bodies
+	local bvh = World.bvh
+	
+	debug.profilebegin("world::broadphase")
+	
+	-- create new arbiters list
+	local newArbiters = {}
+	for idA in World.active do
+		local shapeA = bodies[idA]
+		if shouldSleep(shapeA) then
+			-- add to the sleep timer
+			World.sleepBody(idA, dt)
+		else
+			-- reset the sleep timer thanks
+			shapeA.sleep = 0.0
+		end
+		
+		local min, max = getExtentsSize(shapeA.cframe, shapeA.size)
+		local hits = bvh:query(min - padding, max + padding)
+		for i, idB in hits do
+			if idB == idA then
+				-- do not create arbiters of yourself lol
+				continue
+			elseif newArbiters[bit32.lshift(idA, 16) + idB] then
+				-- do not create repeat contacts
+				continue
+			end
+			
+			-- get the arbiter id for contact pair
+			-- matching nice
+			local arbiterId = bit32.lshift(idB, 16) + idA
+			local shapeB = bodies[idB]
+			
+			local maybeArbiter = arbiters[arbiterId]
+			local arbiter
+			if maybeArbiter then
+				-- we can exploit warm starting because
+				-- we already have an existing contact here
+				arbiter = updateArbiter(maybeArbiter, dt)
+			else
+				-- otherwise just create a new arbiter
+				arbiter = Arbiter.new(shapeA, shapeB)
+			end
+			
+			if not arbiter then
+				-- no contact constraint created
+				continue
+			end
+			
+			World.wakeBody(idB)
+			newArbiters[arbiterId] = arbiter
+		end
+	end
+	
+	debug.profileend()
+	
+	World.arbiters = newArbiters
+end
+
+function World.integrateForces(dt: number)
+	-- add forces and torques here
+	local bodies = World.bodies
+	for id in World.active do
+		local body = bodies[id]
+		body.linearVelocity += body.invMass * body.force * dt
+		body.angularVelocity += body.invInertia * body.torque * dt
+	end
+end
+
+local solveArbiter = Arbiter.solve
+function World.integrateConstraints(dt: number)
+	-- integrates constraints such as contact constraints(for now)
+	debug.profilebegin("world::integrate_constraints")
+	
+	for i = 1, 6 do
+		for id, arbiter in World.arbiters do
+			solveArbiter(arbiter, dt)
+		end
+	end
+	
+	debug.profileend()
+end
+
+function World.integrateBodies(dt: number)
+	-- loop through all bodies and integrate them
+	debug.profilebegin("world::integrate_bodies")
+	
+	local bodies = World.bodies
+	local bvh = World.bvh
+	
+	World.numActive = 0
+	
+	for id in World.active do
+		-- add rotation
+		local body = bodies[id]
+		local deltaAngularVelocity = (body.angularVelocity + body.angularMomentum) * dt
+		local halfAngle = vector.magnitude(deltaAngularVelocity) * 0.5
+		if 0.0 < halfAngle then
+			-- this integrates position and rotation
+			local cos = math.cos(halfAngle)
+			local sin = math.sin(halfAngle)
+
+			local position = castVector(body.cframe.Position)
+				+ (body.linearVelocity + body.linearMomentum)*dt
+			body.cframe = CFrame.new(
+				position.x, position.y, position.z,
+				sin * deltaAngularVelocity.x,
+				sin * deltaAngularVelocity.y,
+				sin * deltaAngularVelocity.z,
+				2 * cos * halfAngle
+			) * body.cframe.Rotation
+		else
+			-- this only integrates position
+			body.cframe += castVector3((body.linearVelocity + body.linearMomentum) * dt)
+		end
+
+		-- zero out the split impulse
+		body.linearMomentum *= 0
+		body.angularMomentum *= 0
+		
+		-- update the current hull with the new
+		-- updated stuff
+		bvh:update(
+			body,
+			getExtentsSize(body.cframe, body.size)
+		)
+		
+		body.hull:update(
+			body.cframe,
+			body.size
+		)
+		
+		body.part.AssemblyAngularVelocity = body.angularVelocity
+		body.part.AssemblyLinearVelocity = body.linearVelocity
+		body.part.CFrame = body.cframe
+		
+		World.numActive += 1
+	end
+	
+	debug.profileend()
+end
+
+function World.step(dt: number)
+	-- do broadphase
+	World.broadphase(dt)
+	
+	-- integrate forces
+	World.integrateForces(dt)
+	
+	-- initialize constraints
+	World.integrateConstraints(dt)
+	
+	-- integrate velocities
+	World.integrateBodies(dt)
+end
+
+return World
