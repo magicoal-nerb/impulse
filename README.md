@@ -43,7 +43,7 @@ rojo serve
 - Replication
 
 ## Showcase
-![tests](./assets/tests.png)
+![tests](./assets/showcase.mp4)
 
 ## Contributing
 Any contributions are greatly appreciated! I might alter pull requests for consistent coding style and performance, but please try keeping code clean!!   
