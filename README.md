@@ -43,7 +43,8 @@ rojo serve
 - Replication
 
 ## Showcase
-![tests](./assets/showcase.mp4)
+https://github.com/user-attachments/assets/2ed574bd-29b7-4d0d-9e25-926b3e5598dd
+
 
 ## Contributing
 Any contributions are greatly appreciated! I might alter pull requests for consistent coding style and performance, but please try keeping code clean!!   
