@@ -84,7 +84,58 @@ local function areArcsIntersecting(
 	return cba*dba <= 0.0 and adc*bdc <= 0.0 and 0.0 <= cba*bdc
 end
 
+local function raycastTriangle(
+	tri: { vector },
+	origin: vector,
+	direction: vector
+): (number, vector, vector)
+	-- https://en.wikipedia.org/wiki/Möller–Trumbore_intersection_algorithm
+	local a = tri[1]
+	local b = tri[2]
+	local c = tri[3]
+	
+	local ab = b - a
+	local ac = c - a
+
+	local rayAC = vector.cross(direction, ac)
+	local det = vector.dot(ab, rayAC)
+	if math.abs(det) < EPSILON then
+		-- the ray is parallel to the triangle
+		return 1, vector.zero, vector.zero
+	end
+
+	local invDet = 1.0 / det
+	local s = origin - a
+	local u = invDet * vector.dot(s, rayAC)
+
+	if (u > 1 and math.abs(u - 1) > EPSILON)
+	or (u < 0 and math.abs(u) > EPSILON) then
+		-- first case, u is out of bounds
+		return 1, vector.zero, vector.zero
+	end
+
+	local se = vector.cross(s, ab)
+	local v = invDet*vector.dot(direction, se)
+	if (u + v > 1 and math.abs(u + v - 1) > EPSILON)
+	or (v < 0 and math.abs(v) > EPSILON) then
+		-- second case, v is out of bounds
+		return 1, vector.zero, vector.zero
+	end
+
+	local t = invDet*vector.dot(ac, se)	
+	if t > EPSILON then
+		-- the ray hits the triangle
+		return t,
+			origin+direction*t,
+			vector.normalize(vector.cross(ab, ac))
+	else
+		-- the ray does not hit the triangle
+		return 1, vector.zero, vector.zero
+	end
+end
+
 local function createCentroid(verticies: { vector }): vector
+	-- calculate center from point cloud
 	local centroid = vector.zero
 	for i, vertex in verticies do
 		centroid += vertex
@@ -270,6 +321,42 @@ function Hull.update(
 	end
 	
 	self.center = castVector(cframe.Position)
+end
+
+function Hull.raycast(
+	self: Hull,
+	origin: vector,
+	direction: vector
+): (number, vector, vector)
+	local verticies = self.verticies
+	local temporary = { }
+
+	local bestNormal = vector.zero
+	local bestT = 1.0
+
+	for i, face in self.faces do
+		for j = 1, #face - 2 do
+			-- we assume that the convex face creates
+			-- a triangle fan, so we just keep on testing
+			-- if our ray hits the triangle
+			temporary[1] = verticies[face[j] + 0]
+			temporary[2] = verticies[face[j] + 1]
+			temporary[3] = verticies[face[j] + 2]
+
+			local t, position, normal = raycastTriangle(
+				temporary,
+				origin,
+				direction
+			)
+
+			if t < bestT then
+				bestNormal = normal
+				bestT = t
+			end
+		end
+	end
+
+	return bestT, origin + direction * bestT, bestNormal
 end
 
 function Hull.new(

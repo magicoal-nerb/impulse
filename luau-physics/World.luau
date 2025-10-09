@@ -2,6 +2,7 @@
 
 local Arbiter = require("./narrowphase/Arbiter")
 local Hull = require("./narrowphase/Hull")
+local Mpr = require("./narrowphase/Mpr")
 local Bvh = require("./broadphase/Bvh")
 
 local BlockHull = Hull.fromObj(require("./shapes/Cube"))
@@ -102,7 +103,7 @@ function World.sleepBody(id: number, dt: number)
 	local body = World.bodies[id]
 	body.sleep = math.min(body.sleep + dt, SLEEP_TIMER)
 	
-	if body.sleep >= SLEEP_TIMER 
+	if body.sleep >= SLEEP_TIMER
 		and not bit32.btest(body.flags, FLAG_NO_SLEEP) then
 		-- set the object to sleep
 		World.active[id] = nil
@@ -196,6 +197,75 @@ function World.integrateConstraints(dt: number)
 	end
 	
 	debug.profileend()
+end
+
+function World.query(min: vector, max: vector): { Body }
+	-- queries the bodies from the world bvh
+	return World.bvh:query(min, max)
+end
+
+function World.shapecast(
+	origin: vector,
+	direction: vector,
+	shape: Support,
+	size: vector
+): (Shape?, vector, vector)
+	-- the size is the approximate size of the support point
+	-- think of it as the maximum bounding box
+	local normal: vector = vector.zero
+	local object: Shape?
+	local t: number = 1.0
+
+	for i, hitObject in World.bvh:trace(
+		origin,
+		direction,
+		size
+	) do
+		local support = hitObject.hull.support
+		local hitT, hitNormal = Mpr(function(direction: vector)
+			return support(direction) - shape(direction)
+		end, direction)
+
+		if hitT < t then
+			-- this is the closest object that we have
+			-- hit thus far
+			object = hitObject
+			normal = hitNormal
+			t = hitT
+		end
+	end
+
+	return object, origin + direction*t, normal
+end
+
+function World.raycast(
+	origin: vector,
+	direction: vector
+): (Body?, vector, vector)
+	local normal: vector = vector.zero
+	local body: Body? = nil
+	local t: number = 1.0
+
+	for i, hitObject in World.bvh:trace(
+		origin,
+		direction,
+		vector.zero
+	) do
+		-- we raycast on the candidates and we track
+		-- the one with the least T value.
+		local hitT, hitPosition, hitNormal = hitObject.hull:raycast(
+			origin,
+			direction
+		)
+
+		if hitT < t then
+			normal = hitNormal
+			body = object
+			t = hitT
+		end
+	end
+
+	return body, origin + direction*t, normal
 end
 
 function World.integrateBodies(dt: number)
