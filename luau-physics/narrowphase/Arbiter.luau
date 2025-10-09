@@ -4,7 +4,7 @@
 local FLAG_DEBUG = true
 local EPSILON = 1e-2
 
-local getContactManifold = require("./getContactManifold")
+local getContactManifold = require("./getManifoldEdges")
 
 local Contact = require("./Contact")
 local Body = require("../Body")

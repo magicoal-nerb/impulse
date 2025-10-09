@@ -6,6 +6,8 @@
 local LuauPhysics = require("../luau-physics")
 local World = LuauPhysics.World
 
+export type RaycastResult = World.RaycastResult
+
 local UPDATE_HZ = 480
 
 local VEC_Y_FLIP = Vector3.new(1, -1, 1)
@@ -65,7 +67,6 @@ export type FloorResult = {
 
 export type Humanoid = typeof(setmetatable({} :: {
 	-- other state
-	raycastParams: RaycastParams,
 	floorResult: FloorResult,
 	
 	-- current state
@@ -79,6 +80,7 @@ export type Humanoid = typeof(setmetatable({} :: {
 	
 	-- used for state
 	state: Enum.HumanoidStateType,
+	character: Model,
 	
 	-- used for movement
 	moveDirection: Vector3,
@@ -112,12 +114,6 @@ function Humanoid.new(rootPart: BasePart): Humanoid
 	local linearVelocity = rootPart.AssemblyLinearVelocity
 	local character = rootPart.Parent :: Model
 	
-	-- create params incase
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = { character }
-	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-	raycastParams.RespectCanCollide = true
-	
 	-- these are used for calculating state stuff
 	local body = World.addDynamicBody(rootPart)
 	World.markBodyActive(body, true)
@@ -127,9 +123,9 @@ function Humanoid.new(rootPart: BasePart): Humanoid
 		angularVelocity = rootPart.AssemblyAngularVelocity,
 		linearVelocity = rootPart.AssemblyLinearVelocity,
 		rootCoord = rootPart.CFrame,
+		character = character,
 		
 		-- other state
-		raycastParams = raycastParams,
 		floorResult = {
 			position = Vector3.zero,
 			normal = Vector3.zero,
@@ -237,7 +233,7 @@ function Humanoid.computeBalanceForce(self: Humanoid, dt: number): Vector3
 	end
 	
 	-- add upwards acceleration
-	local gravity = workspace.Gravity
+	local gravity = World.Gravity
 	local deltaAccel = (desiredAccel * 0.1) + gravity	
 	return Vector3.yAxis * self.mass * deltaAccel
 end
@@ -286,10 +282,10 @@ function Humanoid.updateCeiling(self: Humanoid): RaycastResult?
 	local numResults = 0
 	local direction = Vector3.yAxis * (self.hipHeight + 1)
 	for i, castPoint in CAST_POINTS do
-		local result = workspace:Raycast(
+		local result = World.raycast(
 			origin + rotation * (castPoint * halfSize * VEC_Y_FLIP),
 			direction,
-			self.raycastParams
+			self.character
 		) :: RaycastResult
 
 		if result then
@@ -334,10 +330,10 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	local numResults = 0
 	local direction = -Vector3.yAxis * hysterisis
 	for i, castPoint in CAST_POINTS do
-		local result = workspace:Raycast(
+		local result = World.raycast(
 			origin + rotation * (castPoint * halfSize),
 			direction,
-			self.raycastParams
+			self.character
 		) :: RaycastResult
 		
 		if result then
@@ -360,9 +356,9 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 		floorResult.distance *= invNumResults
 		floorResult.normal *= invNumResults
 
-		floorResult.angularVelocity = floorPart.AssemblyAngularVelocity
-		floorResult.linearVelocity = floorPart.AssemblyLinearVelocity
-		floorResult.origin = floorPart.Position
+		floorResult.angularVelocity = floorPart.angularVelocity
+		floorResult.linearVelocity = floorPart.linearVelocity
+		floorResult.origin = floorPart.cframe.Position
 		
 		floorResult.part = floorPart :: BasePart
 	end
@@ -390,7 +386,7 @@ function Humanoid.update(self: Humanoid, dt: number)
 	-- second, we update the state
 	States[self.state].update(self, dt)
 	
-	local gravity = Vector3.yAxis * workspace.Gravity * self.mass	
+	local gravity = Vector3.yAxis * World.Gravity * self.mass	
 	local currentState = States[self.state]	
 	self.body.force = castVector(currentState.calculateForce(self, dt) - gravity)
 	self.body.torque = castVector(currentState.calculateTorque(self, dt))

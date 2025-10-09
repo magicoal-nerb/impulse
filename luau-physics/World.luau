@@ -17,6 +17,13 @@ export type Arbiter = Arbiter.Arbiter
 export type Body = Body.Body
 export type Bvh = Bvh.Bvh<Body>
 
+export type RaycastResult = {
+	Instance: Shape,
+	Position: vector,
+	Normal: vector,
+	Distance: number,
+}
+
 export type World = {
 	numActive: number,
 	arbiters: { [number]: Arbiter },
@@ -26,6 +33,7 @@ export type World = {
 }
 
 local World = {}
+World.Gravity = 196.2
 World.numActive = 0
 World.bvh = Bvh.new()
 World.bodies = {}
@@ -243,8 +251,9 @@ end
 
 function World.raycast(
 	origin: vector,
-	direction: vector
-): (Body?, vector, vector)
+	direction: vector,
+	ignore: Instance
+): RaycastResult?
 	local bodies = World.bodies
 	local normal: vector = vector.zero
 	local body: Body? = nil
@@ -258,6 +267,11 @@ function World.raycast(
 		-- we raycast on the candidates and we track
 		-- the one with the least T value.
 		local hitObject = bodies[hitId]
+		if ignore and hitObject.part:IsDescendantOf(ignore) then
+			-- from the ignore list
+			continue
+		end
+
 		local hitT, hitPosition, hitNormal = hitObject.hull:raycast(
 			origin,
 			direction
@@ -270,7 +284,17 @@ function World.raycast(
 		end
 	end
 
-	return body, origin + direction*t, normal
+	if not body then
+		-- no need to return anything lol
+		return nil
+	end
+
+	return {
+		Instance = body,
+		Position = origin + direction*t,
+		Normal = normal,
+		Distance = vector.magnitude(direction) * t,
+	}
 end
 
 function World.integrateBodies(dt: number)
