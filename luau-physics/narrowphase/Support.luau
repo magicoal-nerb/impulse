@@ -62,14 +62,10 @@ local GjkCube = table.freeze({
 })
 
 return function(part: Part): Support?
-	--if part.Shape == Enum.PartType.Block then
-	-- only supported shape
+	-- only support shape thus far is a cube
 	return createConvexSupport(
 		part.CFrame,
 		part.Size,
 		GjkCube
 	)
-	--end
-
-	--return nil
 end

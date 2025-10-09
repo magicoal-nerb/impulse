@@ -1,17 +1,22 @@
 {
-  "name": "luau-physics",
+  "name": "impulse",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "$ignoreUnknownInstances": true,
       "luau-physics": {
-	"$className": "ModuleScript",
+	      "$path": "luau-physics",
         "$ignoreUnknownInstances": true
       },
 
       "luau-humanoid": {
-	"$className": "ModuleScript",
+	      "$path": "luau-humanoid",
+        "$ignoreUnknownInstances": true
+      },
+
+      "Simulation" : {
+        "$path": "Simulation.server.luau",
         "$ignoreUnknownInstances": true
       }
     }

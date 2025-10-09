@@ -1,6 +1,8 @@
 --!native
 --!strict
 
+local EPSILON = 1e-3
+
 local Support = require("./Support")
 local Gjk = require("./Gjk")
 
@@ -329,19 +331,20 @@ function Hull.raycast(
 	direction: vector
 ): (number, vector, vector)
 	local verticies = self.verticies
-	local temporary = { }
+	local temporary = table.create(3, vector.zero)
 
 	local bestNormal = vector.zero
 	local bestT = 1.0
 
 	for i, face in self.faces do
-		for j = 1, #face - 2 do
+		local verts = face.verticies
+		for j = 1, #verts - 2 do
 			-- we assume that the convex face creates
 			-- a triangle fan, so we just keep on testing
 			-- if our ray hits the triangle
-			temporary[1] = verticies[face[j] + 0]
-			temporary[2] = verticies[face[j] + 1]
-			temporary[3] = verticies[face[j] + 2]
+			temporary[1] = verticies[verts[j + 0]]
+			temporary[2] = verticies[verts[j + 1]]
+			temporary[3] = verticies[verts[j + 2]]
 
 			local t, position, normal = raycastTriangle(
 				temporary,

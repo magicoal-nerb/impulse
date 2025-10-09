@@ -212,15 +212,18 @@ function World.shapecast(
 ): (Shape?, vector, vector)
 	-- the size is the approximate size of the support point
 	-- think of it as the maximum bounding box
+	local bodies = World.bodies
+
 	local normal: vector = vector.zero
 	local object: Shape?
 	local t: number = 1.0
 
-	for i, hitObject in World.bvh:trace(
+	for i, hitId in World.bvh:trace(
 		origin,
 		direction,
 		size
 	) do
+		local hitObject = bodies[hitId]
 		local support = hitObject.hull.support
 		local hitT, hitNormal = Mpr(function(direction: vector)
 			return support(direction) - shape(direction)
@@ -242,17 +245,19 @@ function World.raycast(
 	origin: vector,
 	direction: vector
 ): (Body?, vector, vector)
+	local bodies = World.bodies
 	local normal: vector = vector.zero
 	local body: Body? = nil
 	local t: number = 1.0
 
-	for i, hitObject in World.bvh:trace(
+	for i, hitId in World.bvh:trace(
 		origin,
 		direction,
 		vector.zero
 	) do
 		-- we raycast on the candidates and we track
 		-- the one with the least T value.
+		local hitObject = bodies[hitId]
 		local hitT, hitPosition, hitNormal = hitObject.hull:raycast(
 			origin,
 			direction
@@ -260,7 +265,7 @@ function World.raycast(
 
 		if hitT < t then
 			normal = hitNormal
-			body = object
+			body = hitObject
 			t = hitT
 		end
 	end
