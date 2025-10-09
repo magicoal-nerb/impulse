@@ -209,7 +209,14 @@ end
 
 function World.query(min: vector, max: vector): { Body }
 	-- queries the bodies from the world bvh
-	return World.bvh:query(min, max)
+	local bodies = World.bodies
+	local output = {}
+
+	for i, hitId in World.bvh:query(min, max) do
+		table.insert(output, bodies[hitId])
+	end
+	
+	return output
 end
 
 function World.shapecast(
@@ -346,8 +353,8 @@ function World.integrateBodies(dt: number)
 			body.size
 		)
 		
-		body.part.AssemblyAngularVelocity = body.angularVelocity
-		body.part.AssemblyLinearVelocity = body.linearVelocity
+		-- body.part.AssemblyAngularVelocity = body.angularVelocity
+		-- body.part.AssemblyLinearVelocity = body.linearVelocity
 		body.part.CFrame = body.cframe
 		
 		World.numActive += 1

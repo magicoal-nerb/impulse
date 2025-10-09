@@ -338,13 +338,15 @@ function Hull.raycast(
 
 	for i, face in self.faces do
 		local verts = face.verticies
-		for j = 1, #verts - 2 do
+		local numVerts = #verts
+
+		for j = 1, numVerts - 1, 2 do
 			-- we assume that the convex face creates
 			-- a triangle fan, so we just keep on testing
 			-- if our ray hits the triangle
-			temporary[1] = verticies[verts[j + 0]]
-			temporary[2] = verticies[verts[j + 1]]
-			temporary[3] = verticies[verts[j + 2]]
+			temporary[3] = verticies[verts[((j + 1) % numVerts) + 1]]
+			temporary[2] = verticies[verts[(j % numVerts) + 1]]
+			temporary[1] = verticies[verts[j]]
 
 			local t, position, normal = raycastTriangle(
 				temporary,
