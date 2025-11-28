@@ -44,7 +44,7 @@ local function characterAdded()
 	CurrentHumanoid.hipHeight = RealHumanoid.HipHeight
 end
 
-local HZ = 120
+local HZ = 240
 
 local previous = os.clock()
 local function heartbeat(dt: number)
