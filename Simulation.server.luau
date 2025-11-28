@@ -40,8 +40,12 @@ local function characterAdded()
 	RealHumanoid:ChangeState(Enum.HumanoidStateType.Running)
 	rootPart.Anchored = true
 	
+	local baseHeight = if RealHumanoid.RigType == Enum.HumanoidRigType.R15
+		then 0.15
+		else 3
+	
 	CurrentHumanoid = Humanoid.new(rootPart)
-	CurrentHumanoid.hipHeight = RealHumanoid.HipHeight
+	CurrentHumanoid.hipHeight = RealHumanoid.HipHeight + baseHeight
 end
 
 local HZ = 240
