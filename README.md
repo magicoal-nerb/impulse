@@ -12,9 +12,6 @@ cd lua-luau
 rojo serve
 ```
 
-## Projects using impulse
-- Recreation of [Roblox's humanoid physics](https://github.com/magicoal-nerb/luau-humanoid)
-
 ## Features
 - One shot contact manifold generation
 - Uses sequential impulses to solve contact constraints
