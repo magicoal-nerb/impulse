@@ -110,6 +110,7 @@ export type BvhNode<T> = Box & T & {
 	flag: number,
 	left: number,
 	right: number,
+	id: number,
 	parent: number,
 	free: number,
 }
@@ -137,6 +138,51 @@ local BvhProxy: Box = {
 	min = vector.one,
 	max = vector.one,
 }
+
+function Bvh.queryPoint<T>(
+	self: Bvh<T>,
+	min: vector,
+	max: vector
+): { number }
+	local nodes = self.nodes
+	if not nodes[self.root] then
+		-- nothing
+		return {}
+	end
+
+	local output = {} :: { BvhNode<T> }
+	local queue = self.queue
+	queue:clear()
+	queue:enqueue(self.root)
+
+	while not queue:empty() do
+		local id = queue:dequeue()
+		local node = nodes[id]
+		if node.flag ~= FLAG_BRANCH then
+			-- leaf node => output
+			if doesAABBCollidePoint(node.min, node.max, point) then
+				-- add node
+				table.insert(output, id)
+			end
+		else
+			-- branch node => queue
+			local l = nodes[node.left] :: any
+			if l and doesAABBCollidePoint(l.min, l.max, point) then
+				-- add left node
+				queue:enqueue(node.left)
+			end
+
+			local r = nodes[node.right] :: any
+			if r and doesAABBCollidePoint(r.min, r.max, point) then
+				-- add right node
+				queue:enqueue(node.right)
+			end
+		end
+	end
+
+	return output
+end
+
 
 function Bvh.query<T>(
 	self: Bvh<T>,
@@ -237,6 +283,8 @@ function Bvh.trace<T>(
 end
 
 function Bvh.rotate<T>(self: Bvh<T>, index: number)
+	assert(index ~= 0, "index cannot be 0")
+
 	if index == self.root then
 		-- dont rotate the root
 		-- node
@@ -316,30 +364,28 @@ end
 function Bvh.remove<T>(self: Bvh<T>, node: BvhNode<T>)
 	-- removes a node
 	local nodes = self.nodes
+	local index = node.id
+
 	local parent = node.parent
-	local parentNode = nodes[parent]
+	local parentNode = nodes[parent] :: any
 	
-	if not parentNode then
-		-- add to freelist
-		local index = table.find(nodes, node) :: number
-		assert(index ~= self.root)
+	if self.root == index then
+		-- add to freelist 
 		node.free = self.freeIndex
 		node.parent = 0
 		
 		self.freeIndex = index
+		self.root = 0
 		return
 	end
 	
-	local sibling	
-	local index
+	local sibling
 
 	-- obtain the sibling index
 	if nodes[parentNode.left] == node then
 		sibling = parentNode.right
-		index = parentNode.left
 	else
 		sibling = parentNode.left
-		index = parentNode.right
 	end
 
 	local newParent = parentNode.parent
@@ -355,7 +401,6 @@ function Bvh.remove<T>(self: Bvh<T>, node: BvhNode<T>)
 		-- refit if possible
 		-- set sibling parent
 		nodes[sibling].parent = newParent
-		nodes[parent] = nil
 		
 		-- stage 3: refit
 		local nodes = self.nodes
@@ -379,6 +424,8 @@ function Bvh.remove<T>(self: Bvh<T>, node: BvhNode<T>)
 
 	-- add to freelist
 	node.free = self.freeIndex
+	nodes[parent] = nil
+
 	self.freeIndex = index
 end
 
@@ -411,6 +458,7 @@ function Bvh.insert<T>(self: Bvh<T>, leaf: BvhNode<T>): number
 	local nodes = self.nodes
 
 	local leafIndex = self:getFreeIndex()
+	leaf.id = leafIndex
 	leaf.free = 0
 
 	if not nodes[siblingIndex] then
@@ -634,8 +682,31 @@ function Bvh.getCost<T>(self: Bvh<T>): number
 	return cost
 end
 
-local dbg = Instance.new("Folder", workspace)
+function Bvh.forEach<T>(self: Bvh<T>, callback: (leaf: BvhNode<T>) -> ())
+	local queue = self.queue
+	queue:clear()
+	queue:enqueue(self.root)
+	
+	local nodes = self.nodes
+	while not queue:empty() do
+		local id = queue:dequeue()
+		local object = nodes[id]
+		if object.flag ~= FLAG_BRANCH then
+			callback(object)
+		else
+			if object.left ~= 0 then
+				queue:enqueue(object.left)
+			end
+
+			if object.right ~= 0 then
+				queue:enqueue(object.right)
+			end
+		end
+	end
+end
+
 function Bvh.draw<T>(self: Bvh<T>)
+	local dbg = Instance.new("Folder", workspace)
 	-- debugger
 	local nodes = self.nodes
 	local queue = self.queue
