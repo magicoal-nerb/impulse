@@ -39,6 +39,17 @@ export type State = {
 	
 	-- function to update
 	update: (self: Humanoid, dt: number) -> (),
+
+	-- function to enter
+	enter: (self: Humanoid, dt: number) -> (),
+}
+
+export type LadderResult = {
+	-- ladder normal
+	normal: Vector3,
+
+	-- is there a ladder?
+	hasLadder: boolean,
 }
 
 export type FloorResult = {
@@ -67,6 +78,7 @@ export type FloorResult = {
 
 export type Humanoid = typeof(setmetatable({} :: {
 	-- other state
+	ladderResult: LadderResult,
 	floorResult: FloorResult,
 	
 	-- current state
@@ -83,11 +95,15 @@ export type Humanoid = typeof(setmetatable({} :: {
 	character: Model,
 	
 	-- used for movement
-	moveDirection: Vector3,
+	moveDirection: Vector3,	
 	hipHeight: number,
 	walkSpeed: number,
 	jumpPower: number,
 	
+	-- mouselock
+	lookAngle: Vector3,
+	mouselock: boolean,
+
 	-- physics body
 	body: LuauPhysics.Body,
 	
@@ -126,6 +142,11 @@ function Humanoid.new(rootPart: BasePart): Humanoid
 		character = character,
 		
 		-- other state
+		ladderResult = {
+			normal = Vector3.zero,
+			hasLadder = false,
+		},
+
 		floorResult = {
 			position = Vector3.zero,
 			normal = Vector3.zero,
@@ -168,9 +189,16 @@ function Humanoid.getDesiredVelocity(self: Humanoid): Vector3
 	-- gets the desired velocity
 	local desiredVelocity = self.moveDirection * self.walkSpeed
 
+	local ladderResult = self.ladderResult
 	local floorResult = self.floorResult
+
 	local floorPart = floorResult.part
-	if floorPart then
+	if ladderResult.hasLadder then
+		-- add the ladder velocity
+		local dot = self.moveDirection:Dot(ladderResult.normal)
+		desiredVelocity -= math.sign(dot) * walkSpeed * Vector3.yAxis
+		desiredVelocity *= Vector3.yAxis
+	elseif floorPart then
 		-- add the floor velocity aswell
 		desiredVelocity += floorResult.linearVelocity
 			+ (floorResult.origin - self.rootCoord.Position):Cross(floorResult.angularVelocity)
@@ -241,6 +269,7 @@ end
 function Humanoid.changeState(self: Humanoid, state: Enum.HumanoidStateType)
 	-- changes the state to another one instead
 	self.state = state
+	self.state:enter(self)
 end
 
 function Humanoid.computeOrientTorque(self: Humanoid, dt: number): Vector3
@@ -270,6 +299,65 @@ function Humanoid.computeOrientTorque(self: Humanoid, dt: number): Vector3
 	local desiredAccel = kP * (desiredAngular + floorAngular - self.angularVelocity.Y)
 	desiredAccel = math.clamp(desiredAccel, -kMaxAccel, kMaxAccel)
 	return self.inertia * Vector3.yAxis * desiredAccel
+end
+
+function Humanoid.updateLadder(self: Humanoid, dt: number)
+	-- Also, this implementation is really naive!
+	-- I'm currently working on a solution that 
+	-- just clips the potential candidates instead
+	local rootCoord = self.rootCoord
+	local displacement = 0.5
+	local stepSize = 2.45
+
+	local direction = rootCoord.LookVector * 0.8
+	local steps, possible, step, air = math.floor(4 * self.hipHeight), 0, 0, 0
+	local collided = false
+
+	-- Reset the ladder state
+	local ladderResult = self.ladderResult
+	ladderResult.hasLadder = false
+
+	for i = 1, steps do
+		local offset = i * displacement - self.hipHeight
+		local origin = rootCoord.Position + Vector3.yAxis * offset
+
+		local result = World.raycast(
+			origin,
+			direction,
+			self.character
+		) :: RaycastResult
+
+		local didCollide = result ~= nil
+		if didCollide ~= collided then
+			-- Collision differed, check the distance
+			-- between the points
+			local difference = (step - air) * displacement
+			if didCollide then
+				-- Set it to the current
+				-- ladder normal
+				ladderResult.normal = result.normal
+			end
+
+			collided = didCollide
+			if math.abs(difference) < stepSize and i ~= 1 then
+				possible += 1
+			end
+
+			-- Make the step and air
+			-- the same
+			step = i
+			air = i
+		elseif collided then
+			-- Report the ladder rung
+			step = i
+		else
+			-- Report the air
+			air = i
+		end
+	end
+
+	-- Calculate the ladder result
+	ladderResult.hasLadder = possible >= 2
 end
 
 function Humanoid.updateCeiling(self: Humanoid): RaycastResult?
@@ -330,6 +418,11 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	local numResults = 0
 	local direction = -Vector3.yAxis * hysterisis
 	for i, castPoint in CAST_POINTS do
+		if numResults ~= 0 and i == 4 then
+			-- Terminate early
+			break
+		end
+
 		local result = World.raycast(
 			origin + rotation * (castPoint * halfSize),
 			direction,
@@ -382,6 +475,24 @@ function Humanoid.update(self: Humanoid, dt: number)
 	local currentState = States[self.state]	
 	self.body.force = currentState.calculateForce(self, dt) - gravity
 	self.body.torque = currentState.calculateTorque(self, dt)
+
+	if self.mouselock then
+		-- Set the mouselock rotation afterwards,
+		-- so wallhops are possible
+		local rootCoord = self.rootCoord
+		local desiredAngular = angleBetween(
+			self.lookAngle,
+			(rootCoord.LookVector * VEC_XZ).Unit
+		)
+
+		local baseCFrame = CFrame.new(rootCoord.Position)
+		local translation = CFrame.new(
+			0.0, 0.0, 0.0,
+			0.0, math.sin(desiredAngular), 0.0, math.cos(desiredAngular)
+		)
+
+		self.body.cframe = baseCFrame * (translation * rootCoord.Rotation)
+	end
 	
 	debug.profileend()
 	

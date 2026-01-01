@@ -1,5 +1,4 @@
 --!strict
-
 local Humanoid = require("../Humanoid")
 
 local Running = {} :: Humanoid.State
@@ -25,6 +24,10 @@ function Running.update(self: Humanoid.Humanoid, dt: number)
 		-- the user is requesting to jump
 		return self:changeState(Enum.HumanoidStateType.Jumping)
 	end
+end
+
+function Running.enter(self: Humanoid.Humanoid)
+	-- :3
 end
 
 return Humanoid.bindState(Enum.HumanoidStateType.Running, Running)

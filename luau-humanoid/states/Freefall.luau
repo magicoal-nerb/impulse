@@ -23,4 +23,8 @@ function Freefall.update(self: Humanoid.Humanoid, dt: number)
 	end
 end
 
+function Freefall.enter(self: Humanoid.Humanoid)
+	-- :3
+end
+
 return Humanoid.bindState(Enum.HumanoidStateType.Freefall, Freefall)

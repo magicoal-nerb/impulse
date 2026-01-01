@@ -40,4 +40,8 @@ function Jumping.update(self: Humanoid.Humanoid, dt: number)
 	end
 end
 
+function Jumping.enter(self: Humanoid.Humanoid)
+	-- :3
+end
+
 return Humanoid.bindState(Enum.HumanoidStateType.Jumping, Jumping)
