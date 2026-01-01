@@ -23,14 +23,10 @@ export type Arbiter = {
 	rotA: CFrame,
 	rotB: CFrame,
 	
-	contacts: { [vector]: Contact },
+	contacts: { [Vector3]: Contact },
 }
 
-local function castVector(vec: Vector3): vector
-	return vector.create(vec.X, vec.Y, vec.Z)
-end
-
-local function drawPt(vec: vector, color: Color3)
+local function drawPt(vec: Vector3, color: Color3)
 	if not FLAG_DEBUG then
 		return
 	end
@@ -40,12 +36,12 @@ local function drawPt(vec: vector, color: Color3)
 	point.CanCollide = false
 	point.CanQuery = false
 	point.Size = Vector3.one * 0.2
-	point.CFrame = CFrame.new(vec.x, vec.y, vec.z)
+	point.CFrame = CFrame.new(vec.X, vec.Y, vec.Z)
 	point.Color = color
 	point.Parent = workspace.Folder
 end
 
-local function getClosestPoint(set: { vector }, to: vector): vector
+local function getClosestPoint(set: { Vector3 }, to: Vector3): Vector3
 	local dotB = math.huge
 	local pointB
 	for j, other in set do
@@ -53,7 +49,7 @@ local function getClosestPoint(set: { vector }, to: vector): vector
 		-- the difference. the one with the least
 		-- distance is the closest point
 		local what = other - to
-		local dot = vector.dot(what, what)
+		local dot = Vector3.dot(what, what)
 		if dot < dotB then
 			-- set closest point
 			pointB = other
@@ -84,7 +80,7 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 		
 		-- we do this for warm starting, i chose rA
 		-- as the hash
-		local id = vector.floor(rA * 1e3)
+		local id = (rA * 1e3):Floor()
 		contacts[id] = Contact.new(
 			shapeA, shapeB,
 			-manifold.axisB, -- normal
@@ -138,7 +134,7 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 
 		-- we do this for warm starting, i chose rA
 		-- as the hash
-		local id = vector.floor(rA * 1e3)
+		local id = Vector3.floor(rA * 1e3)
 		local closest = self.contacts[id]
 		if closest then
 			-- warm start the lambdas

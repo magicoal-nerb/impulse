@@ -14,20 +14,20 @@ export type Hull = Hull.Hull
 export type Contact = {
 	sepA: number,
 	sepB: number,
-	axisA: vector,
-	axisB: vector,
+	axisA: Vector3,
+	axisB: Vector3,
 	
-	contactA: { vector },
-	contactB: { vector },
+	contactA: { Vector3 },
+	contactB: { Vector3 },
 }
 
-local function cleanupVerticies(inputList: { vector }): { vector }
+local function cleanupVerticies(inputList: { Vector3 }): { Vector3 }
 	-- inplace vertex cleanup
-	local hashmap = {} :: { [vector]: boolean }
+	local hashmap = {} :: { [Vector3]: boolean }
 	local left = 1
 	
 	for i, point in inputList do
-		local hash = vector.floor(point * 10000)
+		local hash = (point * 1e4):Floor()
 		if hashmap[hash] then
 			-- we have a similar vertex!
 			continue
@@ -46,16 +46,16 @@ local function cleanupVerticies(inputList: { vector }): { vector }
 end
 
 local function optimizeManifold(
-	inputList: { vector },
-	normal: vector
-): { vector }
+	inputList: { Vector3 },
+	normal: Vector3
+): { Vector3 }
 	if #inputList <= 4 then
 		return cleanupVerticies(inputList)
 	end
 
 	-- there's more than 4 contact points, so we will have
 	-- to find a combination that maximizes area
-	local a = table.remove(inputList) :: vector
+	local a = table.remove(inputList) :: Vector3
 	local bi = 0
 	local ci = 0
 	local di = 0
@@ -64,7 +64,7 @@ local function optimizeManifold(
 	local dot = 0.0
 	for j, point in inputList do
 		local ap = point - a
-		local apap = vector.dot(ap, ap)
+		local apap = ap:Dot(ap)
 
 		if dot < apap then
 			dot = apap
@@ -76,7 +76,7 @@ local function optimizeManifold(
 
 	-- then, find the point which would create 
 	-- the largest/smallest triangular area.
-	local b = table.remove(inputList, bi) :: vector
+	local b = table.remove(inputList, bi) :: Vector3
 	local maxArea = -math.huge
 	local minArea = math.huge
 	for j, p in inputList do
@@ -85,7 +85,7 @@ local function optimizeManifold(
 
 		-- calculate the area of a triangle, and
 		-- check if they are the furthest away from the triangle.
-		local area = vector.dot(vector.cross(pa, pb), normal)
+		local area = pa:Cross(pb):Dot(normal)
 		if maxArea < area then
 			-- maximum area created.
 			maxArea = area
@@ -113,10 +113,10 @@ local function clipHullFaces(
 	hullA: Hull,
 	hullB: Hull,
 	faceA: Face
-): { vector }
+): { Vector3 }
 	-- gather the input list
 	local initialVerts = #faceA.verticies
-	local inputList = table.create(initialVerts) :: { vector }
+	local inputList = table.create(initialVerts) :: { Vector3 }
 	for i, vertex in faceA.verticies do
 		inputList[i] = hullA.verticies[vertex]
 	end
@@ -128,9 +128,9 @@ local function clipHullFaces(
 	local vertsB = hullB.verticies
 	for i, face in hullB.faces do
 		local normal = face.normal
-		local w = vector.dot(vertsB[face.verticies[1]], normal) + 0.001
+		local w = vertsB[face.verticies[1]]:Dot(normal) + 1e-2
 
-		local outputList = {} :: { vector }
+		local outputList = {} :: { Vector3 }
 		local length = #inputList
 		for j = 1, length do
 			local k = if j == 1
@@ -143,8 +143,8 @@ local function clipHullFaces(
 			-- calculate dot products to check
 			-- which side j and k lie on the plane
 			local vjk = vj - vk
-			local vjd = vector.dot(vj, normal)
-			local vkd = vector.dot(vk, normal)
+			local vjd = vj:Dot(normal)
+			local vkd = vk:Dot(normal)
 
 			if vjd < w then
 				if w < vkd then
@@ -246,17 +246,17 @@ return function(
 	-- ca x cd = -(ab x cd)t_1
 	-- (ca x cd) . (ab x cd) = -((ab x cd) . (ab x cd))t_1
 	-- -((ca x cd) . (ab x cd)) / |ab x cd|^2 = t_1
-	local cacd = vector.cross(ca, cd)
-	local abcd = vector.cross(ab, cd)
-	local t1 = math.clamp(-vector.dot(cacd, abcd) / vector.dot(abcd, abcd), 0.0, 1.0)
+	local cacd = ca:Cross(cd)
+	local abcd = ab:Cross(cd)
+	local t1 = math.clamp(-cacd:Dot(abcd) / abcd:Dot(abcd), 0.0, 1.0)
 
 	-- ca x ab = (cd*t_2 - ab*t_1) x ab
 	-- ca x ab = (cd x ab)t_2
 	-- (ca x ab) . (cd x ab) = ((cd x ab) . (cd x ab))t_2
 	-- ((ca x ab) . (cd x ab)) / |cd x ab|^2 = t_2
-	local caab = vector.cross(ca, ab)
-	local cdab = vector.cross(cd, ab)
-	local t2 = math.clamp(vector.dot(caab, cdab) / vector.dot(cdab, cdab), 0.0, 1.0)
+	local caab = ca:Cross(ab)
+	local cdab = cd:Cross(ab)
+	local t2 = math.clamp(caab:Dot(cdab) / cdab:Dot(cdab), 0.0, 1.0)
 	
 	--assert(math.abs(vector.magnitude(edgeAB) - 1) < 1e-2)
 	local rootA = a + ab * t1

@@ -3,23 +3,23 @@
 
 local Gjk = {}
 
-export type Support = (direction: vector) -> vector
+export type Support = (direction: Vector3) -> Vector3
 
 local function tripleProduct(
-	a: vector,
-	b: vector,
-	c: vector
-): vector
+	a: Vector3,
+	b: Vector3,
+	c: Vector3
+): Vector3
 	-- (a x b) x c
 	-- -c x (a x b)
 	-- b(c.a) - a(c.b)
-	return b*vector.dot(c, a) - a*vector.dot(c, b)
+	return b*c:Dot(a) - a*c:Dot(b)
 end
 
 function Gjk.isColliding(
 	suppA: Support,
 	suppB: Support,
-	direction: vector
+	direction: Vector3
 ): boolean
 	-- this uses casey's GJK shortcut which is faster
 	-- than doing the closest point query gjk which has more
@@ -30,7 +30,7 @@ function Gjk.isColliding(
 
 	for i = 1, 8 do
 		local a = suppA(direction) - suppB(-direction)
-		if vector.dot(a, direction) <= 0.1 then
+		if a:Dot(direction) <= 0.1 then
 			-- behind the direction, that means that we found
 			-- a separation, so no collision
 			return false
@@ -38,7 +38,7 @@ function Gjk.isColliding(
 
 		table.insert(simplex, a)
 		length += 1
-		
+
 		if length == 1 then
 			-- point case
 			direction = -a
@@ -49,8 +49,8 @@ function Gjk.isColliding(
 			local ao = -a
 
 			-- ab x ao x ab
-			direction = ab*vector.dot(ab, a)
-				- a*vector.dot(ab, ab)
+			direction = ab*ab:Dot(a)
+			- a*ab:Dot(ab)
 		elseif length == 3 then
 			-- triangle case 
 			local b = simplex[2]
@@ -64,42 +64,42 @@ function Gjk.isColliding(
 
 			-- ab x ac x ac
 			local acPerp = tripleProduct(ab, ac, ac)
-			if vector.dot(abPerp, a) < 0 then
+			if abPerp:Dot(a) < 0 then
 				table.remove(simplex, 1)
 				direction = abPerp
 				length -= 1
-			elseif vector.dot(acPerp, a) < 0 then
+			elseif acPerp:Dot(a) < 0 then
 				table.remove(simplex, 2)
 				direction = acPerp
 				length -= 1
 			else
 				-- ontop or beneath the triangle
-				local abc = vector.cross(ab, ac)
-				direction = -abc * math.sign(vector.dot(abc, a))
+				local abc = ab:Cross(ac)
+				direction = -abc * math.sign(abc:Dot(a))
 			end
 		elseif length == 4 then
 			-- tetrahedron case
 			local b, c, d = simplex[3], simplex[2], simplex[1]
 			local ab, ac, ad = b - a, c - a, d - a
-			local abc = vector.cross(ab, ac)
-			local acd = vector.cross(ac, ad)
-			local adb = vector.cross(ad, ab)
+			local abc = ab:Cross(ac)
+			local acd = ac:Cross(ad)
+			local adb = ad:Cross(ab)
 
-			abc *= -math.sign(vector.dot(abc, ad))
-			acd *= -math.sign(vector.dot(acd, ab))
-			adb *= -math.sign(vector.dot(adb, ac))
-			
-			if vector.dot(abc, a) < 0 then
+			abc *= -math.sign(abc:Dot(ad))
+			acd *= -math.sign(acd:Dot(ab))
+			adb *= -math.sign(adb:Dot(ac))
+
+			if abc:Dot(a) < 0 then
 				-- facing infront of abc
 				table.remove(simplex, 1)
 				direction = abc
 				length -= 1
-			elseif vector.dot(acd, a) < 0 then
+			elseif acd:Dot(a) < 0 then
 				-- facing infront of acd
 				table.remove(simplex, 2)
 				direction = acd
 				length -= 1
-			elseif vector.dot(adb, a) < 0 then
+			elseif adb:Dot(a) < 0 then
 				-- facing infront of adb
 				table.remove(simplex, 3)
 				direction = adb
@@ -114,7 +114,7 @@ function Gjk.isColliding(
 	return false
 end
 
-function Gjk.getClosestPoint(simplex: { vector }): vector
+function Gjk.getClosestPoint(simplex: { Vector3 }): Vector3
 	local length = #simplex
 	if length == 1 then
 		-- point case
@@ -125,7 +125,7 @@ function Gjk.getClosestPoint(simplex: { vector }): vector
 		local b = simplex[2]
 		local ab = b - a
 
-		local t = math.clamp(-vector.dot(ab, a) / vector.dot(ab, ab), 0.0, 1.0)
+		local t = math.clamp(-ab:Dot(a) / ab:Dot(ab), 0.0, 1.0)
 		return a + ab * t
 	elseif length == 3 then
 		-- triangle case
@@ -137,36 +137,36 @@ function Gjk.getClosestPoint(simplex: { vector }): vector
 		-- ab x -a x ab
 		local ab = b - a
 		local abPerp = tripleProduct(-ab, ab, -a)
-		if vector.dot(abPerp, a) < 0 then
+		if abPerp:Dot(a) < 0 then
 			-- line ab
-			local abab = vector.dot(ab,ab)
-			local t = math.clamp(-vector.dot(a, ab) / abab, 0.0, 1.0)
+			local abab = ab:Dot(ab)
+			local t = math.clamp(-a:Dot(ab) / abab, 0.0, 1.0)
 			return a + ab*t
 		end
 
 		-- ac x -a x ac
 		local ac = c - a
 		local acPerp = tripleProduct(-ac, ac, -a)
-		if vector.dot(acPerp, a) < 0 then
+		if acPerp:Dot(a) < 0 then
 			-- line ac
-			local acac = vector.dot(ac, ac)
-			local t = math.clamp(-vector.dot(a, ac) / acac, 0.0, 1.0)
+			local acac = ac:Dot(ac)
+			local t = math.clamp(-a:Dot(ac) / acac, 0.0, 1.0)
 			return a + ac*t
 		end
 
 		-- -b x cb x cb
 		local bc = c - b
 		local bcPerp = tripleProduct(-bc, bc, -b)
-		if vector.dot(bcPerp, b) < 0 then
+		if bcPerp:Dot(b) < 0 then
 			-- line bc
-			local bcbc = vector.dot(bc, bc)
-			local t = math.clamp(-vector.dot(b, bc) / bcbc, 0.0, 1.0)
+			local bcbc = bc:Dot(bc)
+			local t = math.clamp(-b:Dot(bc) / bcbc, 0.0, 1.0)
 			return b + bc*t
 		end
 
 		-- otherwise, it's just a point on the plane
-		local normal = vector.cross(ab, ac)
-		return normal * vector.dot(normal, a) / vector.dot(normal, normal)
+		local normal = ab:Cross(ac)
+		return normal * normal:Dot(a) / normal:Dot(normal)
 	else
 		-- tetrahedron, just simplify this afterwards
 		local a = simplex[1]
@@ -175,22 +175,22 @@ function Gjk.getClosestPoint(simplex: { vector }): vector
 		local d = simplex[4]
 
 		local ao = -a
-		local acd = vector.cross(d-a, c-a)
-		if 0.0 < vector.dot(acd, ao) then
+		local acd = (d-a):Cross(c-a)
+		if 0.0 < acd:Dot(ao) then
 			-- face ACD
 			table.remove(simplex, 2)
 			return Gjk.getClosestPoint(simplex)
 		end
 
-		local abd = vector.cross(b-a, d-a)
-		if 0.0 < vector.dot(abd, ao) then
+		local abd = (b-a):Cross(d-a)
+		if 0.0 < abd:Dot(ao) then
 			-- face ABD
 			table.remove(simplex, 3)
 			return Gjk.getClosestPoint(simplex)
 		end
 
-		local bcd = vector.cross(d-c, b-c)
-		if 0.0 < -vector.dot(bcd, b) then
+		local bcd = (d-c):Cross(b-c)
+		if 0.0 < -bcd:Dot(b) then
 			-- face BCD
 			table.remove(simplex, 1)
 			return Gjk.getClosestPoint(simplex)
@@ -204,8 +204,8 @@ end
 
 function Gjk.getClosestSimplex(
 	support: Support,
-	direction: vector
-): { vector }
+	direction: Vector3
+): { Vector3 }
 	-- gjk to build incremental contact manifolds
 	-- quickly. just check the final simplex over multiple frames
 	-- and determine if that closest simplex result is good
@@ -226,7 +226,7 @@ function Gjk.getClosestSimplex(
 			-- an issue might arise with colinear
 			-- points
 			local normal = tripleProduct(ao, ab, ab)
-			direction = math.sign(vector.dot(normal, ao))
+			direction = math.sign(normal:Dot(ao))
 				* normal
 		elseif length == 3 then
 			-- triangle
@@ -243,19 +243,19 @@ function Gjk.getClosestSimplex(
 			local acPerp = tripleProduct(ab, ac, ac)
 			local bcPerp = tripleProduct(bc, ab, ac)
 
-			if 0.0 < vector.dot(abPerp, ao) then
+			if 0.0 < abPerp:Dot(ao) then
 				-- ab
 				direction = abPerp
-			elseif 0.0 < vector.dot(acPerp, ao) then
+			elseif 0.0 < acPerp:Dot(ao) then
 				-- ac
 				direction = acPerp
-			elseif 0.0 < vector.dot(bcPerp, ao) then
+			elseif 0.0 < bcPerp:Dot(ao) then
 				-- bc
 				direction = bcPerp
 			else
 				-- expand into a tetrahedron
-				local normal = vector.cross(ab, ac)
-				if vector.dot(normal, ao) < 0.0 then
+				local normal = ab:Cross(ac)
+				if normal:Dot(ao) < 0.0 then
 					direction = -normal
 				else
 					direction = normal
@@ -269,28 +269,29 @@ function Gjk.getClosestSimplex(
 			local d = simplex[4]
 
 			local ao = -a
-			local acd = vector.cross(d-a, c-a)
-			if 0.0 < vector.dot(acd, ao) then
+			local acd = (d-a):Cross(c-a)
+			if 0.0 < acd:Dot(ao) then
 				table.remove(simplex, 2)
 				direction = acd
 				continue
 			end
 
-			local abd = vector.cross(b-a, d-a)
-			if 0.0 < vector.dot(abd, ao) then
+			local abd = (b-a):Cross(d-a)
+			if 0.0 < abd:Dot(ao) then
 				table.remove(simplex, 3)
 				direction = abd
 				continue
 			end
 
-			local bcd = vector.cross(d-c, b-c)
-			if 0.0 < -vector.dot(bcd, b) then
+			local bcd = (d-c):Cross(b-c)
+			if 0.0 < -bcd:Dot(b) then
 				table.remove(simplex, 1)
 				direction = bcd
 				continue
 			end
-
-			direction = vector.cross(b-c, a-c)
+			
+			
+			direction = (b-c):Cross(a-c)
 			table.remove(simplex, 4)
 		end
 	end

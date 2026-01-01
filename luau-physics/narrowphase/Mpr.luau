@@ -14,25 +14,25 @@ local function sameSide(a, b)
 	return (a<0) == (b<0)
 end
 
-local function tripleProduct(a: vector, b: vector, c: vector)
+local function tripleProduct(a: Vector3, b: Vector3, c: Vector3)
 	-- a x (b x c) = b(a.c) - c(a.b)
-	return b*vector.dot(a, c) - c*vector.dot(a, b)
+	return b*a:Dot(c) - c*a:Dot(b)
 end
 
-export type Support = (direction: vector) -> vector
+export type Support = (direction: Vector3) -> Vector3
 
 return function(
 	supp: Support,
-	direction: vector
-): (number, vector)
-	local v0 = vector.normalize(direction)
+	direction: Vector3
+): (number, Vector3)
+	local v0 = direction.Unit
 
 	-- Finds a candidate portal.
 	-- The portal is a triangle, but the
 	-- overall simplex is a tetrahedron.
 	local v1 = supp(-v0)
-	local v2 = supp(vector.cross(v1, v0))
-	local v3 = supp(vector.cross(v2-v0, v1-v0))
+	local v2 = supp(v1:Cross(v0))
+	local v3 = supp((v2-v0):Cross(v1-v0))
 
 	-- Now, try to find a portal
 	-- whose triangle will collide
@@ -43,14 +43,14 @@ return function(
 
 		-- We only care about cases where the triangle
 		-- shares a vertex with V0.
-		local n012 = vector.cross(v1-v0, v2-v0)
-		local n023 = vector.cross(v2-v0, v3-v0)
-		local n031 = vector.cross(v3-v0, v1-v0)
+		local n012 = (v1-v0):Cross(v2-v0)
+		local n023 = (v2-v0):Cross(v3-v0)
+		local n031 = (v3-v0):Cross(v1-v0)
 
 		-- If find a triangle which can see the origin point, make sure the normals
 		-- are outwards facing(ie. away from the centeroid of the tetrahedron)
 		-- such that we can replace the complement vertex with the proposed support point
-		if sameSide(vector.dot(n012, v3), -vector.dot(n012, v0)) then
+		if sameSide(n012:Dot(v3), -n012:Dot(v0)) then
 			-- Our origin lies on t_012
 			if vector.dot(n012, v0) < 0.0 then
 				v1, v2 = v2, v1
@@ -58,10 +58,10 @@ return function(
 			end
 
 			v3 = supp(n012)
-			if vector.dot(v3, n012) < 0.0 then
-				return 1, vector.zero
+			if v3:Dot(n012) < 0.0 then
+				return 1, Vector3.zero
 			end
-		elseif sameSide(vector.dot(n023, v1), -vector.dot(n023, v0)) then
+		elseif sameSide(n023:Dot(v1), -n023:Dot(v0)) then
 			-- Our origin lies on t_023
 			if vector.dot(n023, v0) < 0.0 then
 				v2, v3 = v3, v2
@@ -69,19 +69,19 @@ return function(
 			end
 
 			v1 = supp(n023)
-			if vector.dot(v1, n023) < 0.0 then
-				return 1, vector.zero
+			if v1:Dot(n023) < 0.0 then
+				return 1, Vector3.zero
 			end
-		elseif sameSide(vector.dot(n031, v2), -vector.dot(n031, v0)) then
+		elseif sameSide(n031:Dot(v2), -n031:Dot(v0)) then
 			-- Our origin lies on t_031
-			if vector.dot(n031, v0) < 0.0 then
+			if n031:Dot(v0) < 0.0 then
 				v3, v1 = v1, v3
 				n031 *= -1.0
 			end
 
 			v2 = supp(n031)
-			if vector.dot(v2, n031) < 0.0 then
-				return 1, vector.zero
+			if v2:Dot(n031) < 0.0 then
+				return 1, Vector3.zero
 			end
 		else
 			-- This means our ray collides with our tetrahedron
@@ -94,15 +94,15 @@ return function(
 	local v12 = v2-v1
 	local v13 = v3-v1
 
-	local normal = vector.cross(v12, v13)
-	local proj = v0 * (vector.dot(v1, normal) / vector.dot(v0, normal))
-	if vector.dot(tripleProduct(v12, v12, v13), proj-v1) > 0.0 then
+	local normal = v12:Cross(v13)
+	local proj = v0 * (v1:Dot(normal) / v0:Dot(normal))
+	if tripleProduct(v12, v12, v13):Dot(proj-v1) > 0.0 then
 		-- Facing towards line V1, V2
 		return 1, vector.zero
-	elseif vector.dot(tripleProduct(-v13, v12, v13), proj-v1) > 0.0 then
+	elseif tripleProduct(-v13, v12, v13):Dot(proj-v1) > 0.0 then
 		-- Facing towards line V1, V3
 		return 1, vector.zero
-	elseif vector.dot(tripleProduct(v3-v2, v12, v13), proj-v2) > 0.0 then
+	elseif tripleProduct(v3-v2, v12, v13):Dot(proj-v2) > 0.0 then
 		-- Facing towards line V2, V3
 		return 1, vector.zero
 	end
@@ -111,16 +111,16 @@ return function(
 	-- we can refine it so it minimizes the distance from the ray
 	-- and the plane the triangle will form.
 	for i = 1, MPR_REFINE_STEPS do
-		normal = vector.cross(v3 - v1, v2 - v1)
-		if vector.dot(normal, v0) > 0.0 then
+		normal = (v3 - v1):Cross(v2 - v1)
+		if normal:Dot(v0) > 0.0 then
 			v2, v3 = v3, v2
 			normal *= -1.0
 		end
 
 		local p = supp(normal)
-		if vector.dot(v1, normal) > (vector.dot(p, normal) + 1e-3) then
+		if v1:Dot(normal) > (p:Dot(normal) + 1e-3) then
 			break
-		elseif math.abs(vector.dot(p - v1, normal)) < 1e-3 then
+		elseif math.abs((p - v1):Dot(normal)) < 1e-3 then
 			break
 		end
 
@@ -129,11 +129,11 @@ return function(
 		-- inside or outside. 
 
 		-- Triangle v4,v0,v1		
-		local cross = vector.cross(p, v1)
-		if vector.dot(cross, v0) > 0.0 then
+		local cross = p:Cross(v1)
+		if cross:Dot(v0) > 0.0 then
 			-- Inside v4,v0,v1
-			cross = vector.cross(p, v2)
-			if vector.dot(cross, v0) < 0.0 then
+			cross = p:Cross(v2)
+			if cross:Dot(v0) < 0.0 then
 				-- Inside triangles
 				-- v4,v0,v1
 				-- v4,v2,v0
@@ -146,8 +146,8 @@ return function(
 			end
 		else
 			-- Outside v4,v0,v1
-			cross = vector.cross(p, v3)
-			if vector.dot(cross, v0) < 0.0 then
+			cross = p:Cross(v3)
+			if cross:Dot(v0) < 0.0 then
 				-- Outside triangles
 				-- v4,v0,v1
 				-- v4,v0,v3
@@ -163,10 +163,10 @@ return function(
 
 	-- dot(v0 * lambda, normal) = dot(v1, normal)
 	-- lambda = dot(v1, normal) / dot(v0, normal)
-	local t = vector.dot(v1, normal) / (vector.dot(v0, normal) * vector.magnitude(direction))
+	local t = v1:Dot(normal) / (v0:Dot(normal) * direction.Magnitude)
 	if 0.0 <= t and t <= 1.0 then
-		return t, vector.normalize(normal)
+		return t, normal.Unit
 	end
 
-	return 1, vector.zero
+	return 1, Vector3.zero
 end

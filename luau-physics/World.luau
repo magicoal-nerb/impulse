@@ -19,8 +19,8 @@ export type Bvh = Bvh.Bvh<Body>
 
 export type RaycastResult = {
 	Instance: Shape,
-	Position: vector,
-	Normal: vector,
+	Position: Vector3,
+	Normal: Vector3,
 	Distance: number,
 }
 
@@ -40,16 +40,6 @@ World.bodies = {}
 World.active = {}
 World.arbiters = {}
 
-local function castVector(vec3: Vector3): vector
-	-- casts a vector
-	return vector.create(vec3.X, vec3.Y, vec3.Z)
-end
-
-local function castVector3(vec: vector): Vector3
-	-- helper cast lol
-	return Vector3.new(vec.x, vec.y, vec.z)
-end
-
 local function getShape(part: BasePart): Hull.Obj
 	-- current shape right now is a block, but you can do other stuff
 	-- like wedges tris, etc. however, the biggest limitation are smooth
@@ -62,8 +52,8 @@ local function shouldSleep(body: Body): boolean
 	-- checks if the linear velocity isnt much
 	local velocity = body.linearVelocity
 	local angular = body.angularVelocity
-	return vector.dot(velocity, velocity) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
-		and vector.dot(angular, angular) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
+	return velocity:Dot(velocity) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
+		and angular:Dot(angular) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
 end
 
 function World.addDynamicBody(part: BasePart): Body
@@ -120,7 +110,7 @@ end
 
 local updateArbiter = Arbiter.update
 local getExtentsSize = Body.getExtentsSize
-local padding = vector.one
+local padding = Vector3.one
 function World.broadphase(dt: number)
 	-- this phase requres you to calculate everything... not really lol
 	local arbiters = World.arbiters
@@ -207,7 +197,7 @@ function World.integrateConstraints(dt: number)
 	debug.profileend()
 end
 
-function World.query(min: vector, max: vector): { Body }
+function World.query(min: Vector3, max: Vector3): { Body }
 	-- queries the bodies from the world bvh
 	local bodies = World.bodies
 	local output = {}
@@ -220,16 +210,16 @@ function World.query(min: vector, max: vector): { Body }
 end
 
 function World.shapecast(
-	origin: vector,
-	direction: vector,
+	origin: Vector3,
+	direction: Vector3,
 	shape: Support,
-	size: vector
-): (Shape?, vector, vector)
+	size: Vector3
+): (Shape?, Vector3, Vector3)
 	-- the size is the approximate size of the support point
 	-- think of it as the maximum bounding box
 	local bodies = World.bodies
 
-	local normal: vector = vector.zero
+	local normal: Vector3 = Vector3.zero
 	local object: Shape?
 	local t: number = 1.0
 
@@ -240,7 +230,7 @@ function World.shapecast(
 	) do
 		local hitObject = bodies[hitId]
 		local support = hitObject.hull.support
-		local hitT, hitNormal = Mpr(function(direction: vector)
+		local hitT, hitNormal = Mpr(function(direction: Vector3)
 			return support(direction) - shape(direction)
 		end, direction)
 
@@ -257,19 +247,19 @@ function World.shapecast(
 end
 
 function World.raycast(
-	origin: vector,
-	direction: vector,
+	origin: Vector3,
+	direction: Vector3,
 	ignore: Instance
 ): RaycastResult?
 	local bodies = World.bodies
-	local normal: vector = vector.zero
+	local normal: Vector3 = Vector3.zero
 	local body: Body? = nil
 	local t: number = 1.0
 
 	for i, hitId in World.bvh:trace(
 		origin,
 		direction,
-		vector.zero
+		Vector3.zero
 	) do
 		-- we raycast on the candidates and we track
 		-- the one with the least T value.
@@ -300,7 +290,7 @@ function World.raycast(
 		Instance = body,
 		Position = origin + direction*t,
 		Normal = normal,
-		Distance = vector.magnitude(direction) * t,
+		Distance = direction.Magnitude * t,
 	}
 end
 
@@ -317,13 +307,13 @@ function World.integrateBodies(dt: number)
 		-- add rotation
 		local body = bodies[id]
 		local deltaAngularVelocity = (body.angularVelocity + body.angularMomentum) * dt
-		local halfAngle = vector.magnitude(deltaAngularVelocity) * 0.5
+		local halfAngle = deltaAngularVelocity.Magnitude * 0.5
 		if 0.0 < halfAngle then
 			-- this integrates position and rotation
 			local cos = math.cos(halfAngle)
 			local sin = math.sin(halfAngle)
 
-			local position = castVector(body.cframe.Position)
+			local position = body.cframe.Position
 				+ (body.linearVelocity + body.linearMomentum)*dt
 			body.cframe = CFrame.new(
 				position.x, position.y, position.z,
@@ -334,7 +324,7 @@ function World.integrateBodies(dt: number)
 			) * body.cframe.Rotation
 		else
 			-- this only integrates position
-			body.cframe += castVector3((body.linearVelocity + body.linearMomentum) * dt)
+			body.cframe += (body.linearVelocity + body.linearMomentum) * dt
 		end
 
 		-- zero out the split impulse

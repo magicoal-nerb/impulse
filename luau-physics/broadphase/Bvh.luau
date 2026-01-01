@@ -5,7 +5,7 @@ local BvhBinnedSah = require("./builders/BvhBinnedSah")
 
 local Queue = require("./Queue")
 
-local VEC_INF = vector.one * math.huge
+local VEC_INF = Vector3.one * math.huge
 
 -- Truthfully we only care if a node's id
 -- is solely FLAG_BRANCH, because that is an internal
@@ -19,15 +19,15 @@ Bvh.__index = Bvh
 
 export type Bin = Box & { count: number }
 export type Box = {
-	center: vector,
-	min: vector,
-	max: vector,
+	center: Vector3,
+	min: Vector3,
+	max: Vector3,
 }
 
 local function sah(box: Box): number
 	-- the main cost function of our tree
 	local delta = box.max - box.min
-	return 2*(delta.x*delta.y + delta.z*delta.x + delta.z*delta.y)
+	return 2*(delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.Y)
 end
 
 local function unionCost(
@@ -37,14 +37,14 @@ local function unionCost(
 	-- gets the cost of combinine two boxes
 	-- together. the cost function is just the surface
 	-- area of the boxes.
-	local delta = vector.max(box0.max, box1.max) - vector.min(box0.min, box1.min)
-	return 2*(delta.x*delta.y + delta.z*delta.x + delta.z*delta.y)
+	local delta = box0.max:Max(box1.max) - box0.min:Min(box1.min)
+	return 2*(delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.y)
 end
 
 local function doesAABBCollidePoint(
-	min: vector,
-	max: vector,
-	point0: vector
+	min: Vector3,
+	max: Vector3,
+	point0: Vector3
 ): boolean
 	-- checks if a bounding box and point collides.
 	-- consider the case:
@@ -54,9 +54,9 @@ local function doesAABBCollidePoint(
 	-- asks if P is bounded within A_min and A_max. also, we're
 	-- still using the number line analogy, so this will generalize
 	-- to all 3 axes.
-	return min.x < point0.x and point0.x < max.x
-		and min.y < point0.y and point0.y < max.y
-		and min.z < point0.z and point0.z < max.z
+	return min.X < point0.X and point0.X < max.X
+		and min.Y < point0.Y and point0.Y < max.Y
+		and min.Z < point0.Z and point0.Z < max.Z
 end
 
 local function doesAABBCollideAABB(aabb0: Box, aabb1: Box): boolean
@@ -67,9 +67,9 @@ local function doesAABBCollideAABB(aabb0: Box, aabb1: Box): boolean
 	local min1 = aabb1.min
 	local max1 = aabb1.max
 
-	return min0.x <= max1.x and max0.x >= min1.x
-		and min0.y <= max1.y and max0.y >= min1.y
-		and min0.z <= max1.z and max0.z >= min1.z
+	return min0.X <= max1.X and max0.X >= min1.X
+		and min0.Y <= max1.Y and max0.Y >= min1.Y
+		and min0.Z <= max1.Z and max0.Z >= min1.Z
 end
 
 local function doesAABBCollideRay(
@@ -93,11 +93,11 @@ local function doesAABBCollideRay(
 	local vMax = (max - origin) * invDir
 
 	-- Quick branchless optimization
-	local rMin = vector.min(vMin,vMax)
-	local rMax = vector.max(vMax,vMin)
+	local rMin = vMin:Min(vMax)
+	local rMax = vMax:Max(vMin)
 
-	local tMin = math.max(rMin.x, rMin.y, rMin.z)
-	local tMax = math.min(rMax.y, rMax.y, rMax.z)
+	local tMin = math.max(rMin.X, rMin.Y, rMin.Z)
+	local tMax = math.min(rMax.X, rMax.Y, rMax.Z)
 	return tMax >= 0 
 		and tMin <= tMax 
 		and tMin <= 1 
@@ -134,15 +134,15 @@ function Bvh.new<T>(): Bvh<T>
 end
 
 local BvhProxy: Box = {
-	center = vector.zero,
-	min = vector.one,
-	max = vector.one,
+	center = Vector3.zero,
+	min = Vector3.one,
+	max = Vector3.one,
 }
 
 function Bvh.queryPoint<T>(
 	self: Bvh<T>,
-	min: vector,
-	max: vector
+	min: Vector3,
+	max: Vector3
 ): { number }
 	local nodes = self.nodes
 	if not nodes[self.root] then
@@ -186,8 +186,8 @@ end
 
 function Bvh.query<T>(
 	self: Bvh<T>,
-	min: vector,
-	max: vector
+	min: Vector3,
+	max: Vector3
 ): { number }
 	local nodes = self.nodes
 	if not nodes[self.root] then
@@ -232,12 +232,12 @@ end
 
 function Bvh.trace<T>(
 	self: Bvh<T>,
-	origin: vector,
-	direction: vector,
-	size: vector
+	origin: Vector3,
+	direction: Vector3,
+	size: Vector3
 ): { number }
 	-- box raycast operation
-	local invDir = vector.one / direction
+	local invDir = Vector3.one / direction
 	local nodes = self.nodes
 	if not nodes[self.root] then
 		-- Don't query.
@@ -354,8 +354,8 @@ function Bvh.refit<T>(self: Bvh<T>, index: number)
 
 		local leftNode = nodes[node.left]
 		local rightNode = nodes[node.right]
-		node.min = vector.min(leftNode.min, rightNode.min)
-		node.max = vector.max(leftNode.max, rightNode.max)
+		node.min = leftNode.min:Min(rightNode.min)
+		node.max = leftNode.max:Max(rightNode.max)
 
 		index = node.parent
 	end
@@ -410,8 +410,8 @@ function Bvh.remove<T>(self: Bvh<T>, node: BvhNode<T>)
 			local node = nodes[cursor]
 			local leftNode = nodes[node.left]
 			local rightNode = nodes[node.right]
-			node.min = vector.min(leftNode.min, rightNode.min)
-			node.max = vector.max(leftNode.max, rightNode.max)
+			node.min = leftNode.min:Min(rightNode.min)
+			node.max = leftNode.max:Max(rightNode.max)
 
 			cursor = node.parent
 		end
@@ -538,8 +538,8 @@ function Bvh.insert<T>(self: Bvh<T>, leaf: BvhNode<T>): number
 		self:refit(branchIndex)
 	else
 		-- parent was the root node
-		branch.min = vector.min(leaf.min, sibling.min)
-		branch.max = vector.max(leaf.max, sibling.max)
+		branch.min = leaf.min:Min(sibling.min)
+		branch.max = leaf.max:Max(sibling.max)
 		self.root = branchIndex
 	end
 
@@ -583,8 +583,8 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 			local right = leaves[pair.rightIndex]
 			local left = leaves[pair.leftIndex]
 
-			local min = vector.min(left.min, right.min)
-			local max = vector.max(left.max, right.max)
+			local min = left.min:Min(right.min)
+			local max = left.max:Max(right.max)
 			local branch = {
 				min = min,
 				max = max,
@@ -616,7 +616,7 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 		local branch = {
 			max = -VEC_INF,
 			min = VEC_INF,
-			center = vector.zero,
+			center = Vector3.zero,
 			parent = pair.parent,
 			left = size + 1,
 			right = size + 2,
@@ -745,19 +745,19 @@ function Bvh.draw<T>(self: Bvh<T>)
 	end
 end
 
-local fatAABB = vector.one
+local fatAABB = Vector3.one
 
 function Bvh.update<T>(
 	self: Bvh<T>,
 	node: BvhNode<T>,
-	min0: vector,
-	max0: vector
+	min0: Vector3,
+	max0: Vector3
 )
 	local min1 = node.min - fatAABB
 	local max1 = node.max + fatAABB
 
-	if min1.x <= min0.x and min1.y <= min0.y and min1.z <= min0.z 
-		and max0.x <= max1.x and max0.y <= max1.y and max0.z <= max1.z then
+	if min1.X <= min0.X and min1.Y <= min0.Y and min1.Z <= min0.Z 
+		and max0.X <= max1.X and max0.Y <= max1.Y and max0.Z <= max1.Z then
 		-- no need to update because the fat aabb still persists
 		return
 	end

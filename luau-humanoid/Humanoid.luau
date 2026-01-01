@@ -364,17 +364,9 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	end
 end
 
-local function castVector(vec: Vector3): vector
-	return vector.create(vec.X, vec.Y, vec.Z)
-end
-
-local function castVector3(vec: vector): Vector3
-	return Vector3.new(vec.x, vec.y, vec.z)
-end
-
 function Humanoid.update(self: Humanoid, dt: number)
-	self.angularVelocity = castVector3(self.body.angularVelocity)
-	self.linearVelocity = castVector3(self.body.linearVelocity)
+	self.angularVelocity = self.body.angularVelocity
+	self.linearVelocity = self.body.linearVelocity
 	self.rootCoord = self.body.cframe
 	
 	-- get initial state
@@ -388,8 +380,8 @@ function Humanoid.update(self: Humanoid, dt: number)
 	
 	local gravity = Vector3.yAxis * World.Gravity * self.mass	
 	local currentState = States[self.state]	
-	self.body.force = castVector(currentState.calculateForce(self, dt) - gravity)
-	self.body.torque = castVector(currentState.calculateTorque(self, dt))
+	self.body.force = currentState.calculateForce(self, dt) - gravity
+	self.body.torque = currentState.calculateTorque(self, dt)
 	
 	debug.profileend()
 	

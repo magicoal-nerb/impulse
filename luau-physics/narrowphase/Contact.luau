@@ -41,11 +41,11 @@ export type Contact = typeof(setmetatable({} :: {
 	
 	-- normal
 	friction: number,
-	normal: vector,
+	normal: Vector3,
 	
 	-- offsets
-	rA: vector,
-	rB: vector,
+	rA: Vector3,
+	rB: Vector3,
 	
 	-- jacobians
 	jN: Jacobian,
@@ -56,21 +56,16 @@ export type Contact = typeof(setmetatable({} :: {
 export type Jacobian = {	
 	-- state variables
 	flag: number,
-	jva: vector,
-	jwa: vector,
-	jvb: vector,
-	jwb: vector,
+	jva: Vector3,
+	jwa: Vector3,
+	jvb: Vector3,
+	jwb: Vector3,
 	
 	-- final bias
 	bias: number,
 	effMass: number,
 	totLambda: number,
 }
-
-local function castVec3(vec: vector): Vector3
-	-- casts a vector to a vector3 >_>
-	return Vector3.new(vec.x, vec.y, vec.z)
-end
 
 local function solveJacobian(
 	self: Jacobian,
@@ -81,10 +76,10 @@ local function solveJacobian(
 	-- calculate J*v_1
 	local a = contact.bodyA
 	local b = contact.bodyB
-	local jv = vector.dot(self.jva, a.linearVelocity)
-		+ vector.dot(self.jwa, a.angularVelocity)
-		+ vector.dot(self.jvb, b.linearVelocity)
-		+ vector.dot(self.jwb, b.angularVelocity)
+	local jv = self.jva:Dot(a.linearVelocity)
+		+ self.jwa:Dot(a.angularVelocity)
+		+ self.jvb:Dot(b.linearVelocity)
+		+ self.jwb:Dot(b.angularVelocity)
 
 	-- ensure that sum lambda_i >= 0, cannot clamp
 	-- lambda on its own. lambda is the difference between
@@ -114,17 +109,17 @@ function Jacobian.new(
 	a: Body,
 	b: Body,
 	
-	normal: vector,
-	rA: vector,
-	rB: vector,
+	normal: Vector3,
+	rA: Vector3,
+	rB: Vector3,
 	flag: number,
 	depth: number
 ): Jacobian
 	-- state variables
 	local jva = -normal
-	local jwa = -vector.cross(rA, normal)
+	local jwa = -rA:Cross(normal)
 	local jvb = normal
-	local jwb = vector.cross(rB, normal)
+	local jwb = rB:Cross(normal)
 	
 	--[[
 		C: (b - a) . n >= 0
@@ -147,9 +142,9 @@ function Jacobian.new(
 	]]
 	
 	local effMass = a.invMass
-		+ vector.dot(a.invInertia * jwa, jwa)
+		+ (a.invInertia * jwa):Dot(jwa)
 		+ b.invMass
-		+ vector.dot(b.invInertia * jwb, jwb)
+		+ (b.invInertia * jwb):Dot(jwb)
 	
 	local bias = 0.0
 	if flag == FLAG_NORMAL then
@@ -166,11 +161,11 @@ function Jacobian.new(
 		]]
 
 		local velocityConstraint = -a.linearVelocity
-			- vector.cross(a.angularVelocity, rA)
+			- a.angularVelocity:Cross(rA)
 			+ b.linearVelocity
-			+ vector.cross(b.angularVelocity, rB)
+			+ b.angularVelocity:Cross(rB)
 		
-		local projected = vector.dot(velocityConstraint, normal)
+		local projected = velocityConstraint:Dot(normal)
 		local restitution = a.restitution * b.restitution
 		local beta = a.beta * b.beta
 		
@@ -192,19 +187,17 @@ function Jacobian.new(
 	}
 end
 
-local VEC_X = vector.create(1, 0, 0)
-local VEC_Z = vector.create(0, 0, 1)
-local function getOrthogonal(normal: vector): (vector, vector)
+local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
 	if math.abs(normal.y) > 0.99 then
 		-- its up, so just pick the other two
 		-- basis vectors
-		return VEC_X, VEC_Z
+		return Vector3.xAxis, Vector3.zAxis
 	else
 		-- tangent = y x normal
 		-- bitangent = tangent x normal
-		local tangent = vector.create(normal.z, 0, -normal.x)
-		local bitangent = vector.cross(tangent, normal)
-		return vector.normalize(tangent), vector.normalize(bitangent)
+		local tangent = Vector3.new(normal.Z, 0, -normal.X)
+		local bitangent = tangent:Cross(normal)
+		return tangent.Unit, bitangent.Unit
 	end
 end
 
@@ -212,9 +205,9 @@ function Contact.new(
 	bodyA: Body,
 	bodyB: Body,
 
-	normal: vector,
-	rA: vector,
-	rB: vector,
+	normal: Vector3,
+	rA: Vector3,
+	rB: Vector3,
 	
 	depth: number
 ): Contact

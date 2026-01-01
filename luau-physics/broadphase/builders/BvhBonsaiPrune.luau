@@ -10,9 +10,9 @@ local FLAG_LEAF = 0x2
 
 export type Box = {
 	flag: number,
-	center: vector,
-	min: vector,
-	max: vector,
+	center: Vector3,
+	min: Vector3,
+	max: Vector3,
 	free: number,
 	left: number,
 	right: number,
@@ -22,7 +22,7 @@ export type Box = {
 local function sah(box: Box): number
 	-- the main cost function of our tree
 	local delta = box.max - box.min
-	return delta.x*delta.y + delta.z*delta.x + delta.z*delta.y
+	return delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.Y
 end
 
 export type Bvh = typeof(setmetatable({} :: {
@@ -54,13 +54,11 @@ return function<T>(
 
 		local leftNode = nodes[node.left]
 		local rightNode = nodes[node.right]
-		node.min = vector.min(leftNode.min, rightNode.min)
-		node.max = vector.max(leftNode.max, rightNode.max)
+		node.min = leftNode.min:Min(rightNode.min)
+		node.max = leftNode.max:Max(rightNode.max)
 	end
 
 	dfs(bvh.root)
-
-	local t0 = os.clock()
 
 	-- create a queue
 	local root = bvh.root
@@ -106,7 +104,4 @@ return function<T>(
 		local node = nodes[nodeId]
 		bvh:insert(node)
 	end
-
-	local t1 = os.clock()
-	print(`bonsai_prune {((t1-t0)*1e6)//1}`)
 end

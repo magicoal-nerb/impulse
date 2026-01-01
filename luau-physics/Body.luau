@@ -20,24 +20,24 @@ export type Body = {
 	flags: number,
 	
 	-- queries
-	min: vector,
-	max: vector,
+	min: Vector3,
+	max: Vector3,
 	
 	-- state
 	cframe: CFrame,
-	size: vector,
+	size: Vector3,
 	
 	-- velocities
-	linearVelocity: vector,
-	angularVelocity: vector,
+	linearVelocity: Vector3,
+	angularVelocity: Vector3,
 	
 	-- momentum
-	linearMomentum: vector,
-	angularMomentum: vector,
+	linearMomentum: Vector3,
+	angularMomentum: Vector3,
 	
 	-- other state if necessary lol
-	torque: vector,
-	force: vector,
+	torque: Vector3,
+	force: Vector3,
 	
 	-- inertia
 	invInertia: CFrame,
@@ -53,48 +53,43 @@ export type Body = {
 	beta: number,
 }
 
-local function getWedgeInertia(mass: number, size: vector): vector
+local function getWedgeInertia(mass: number, size: Vector3): Vector3
 	-- https://freedium.cfd/https://rjallain.medium.com/the-moment-of-inertia-tensor-for-a-triangle-18482978a938
 	local x = size.x
 	local y = size.y
 	local z = size.z
 
-	return vector.create(
+	return Vector3.new(
 		mass * z*z,
 		mass * x*x,
 		mass * y*y
 	) / 6
 end
 
-local function getCubeInertia(mass: number, size: vector): vector
+local function getCubeInertia(mass: number, size: Vector3): Vector3
 	-- gets moment of inertia of a cube, we assume this
 	-- for all of the parts in our body
 	local x = size.x
 	local y = size.y
 	local z = size.z
 	
-	return vector.create(
+	return Vector3.new(
 		mass * (y*y + z*z),
 		mass * (x*x + z*z),
 		mass * (x*x + y*y)
 	) / 12
 end
 
-local function castVector(vec: Vector3): vector
-	-- casts a vector3 to a vector
-	return vector.create(vec.X, vec.Y, vec.Z)
-end
-
-local function getExtentsSize(cframe: CFrame, size: vector): (vector, vector)
+local function getExtentsSize(cframe: CFrame, size: Vector3): (Vector3, Vector3)
 	local halfSize = size * 0.5
-	local halfAbsSize = cframe.RightVector:Abs() * halfSize.x
-		+ cframe.UpVector:Abs() * halfSize.y
-		+ cframe.LookVector:Abs() * halfSize.z
+	local halfAbsSize = cframe.RightVector:Abs() * halfSize.X
+		+ cframe.UpVector:Abs() * halfSize.Y
+		+ cframe.LookVector:Abs() * halfSize.Z
 	
 	-- gets the position
 	local position = cframe.Position
-	return castVector(position - halfAbsSize),
-		castVector(position + halfAbsSize)
+	return position - halfAbsSize,
+		position + halfAbsSize
 end
 
 local CF_ZERO = CFrame.new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
@@ -103,7 +98,7 @@ function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
 	-- so we cannot apply linear velocity or angular velocity
 	-- at all to this
 	local cframe = part.CFrame
-	local size = castVector(part.Size)
+	local size = part.Size
 
 	-- get the other stuff please :D
 	local min, max = getExtentsSize(cframe, size)
@@ -125,16 +120,16 @@ function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
 		size = size,
 
 		-- velocities
-		angularVelocity = castVector(part.AssemblyAngularVelocity),
-		linearVelocity = castVector(part.AssemblyLinearVelocity),
+		angularVelocity = part.AssemblyAngularVelocity,
+		linearVelocity = part.AssemblyLinearVelocity,
 		
 		-- momentum
-		angularMomentum = vector.zero,
-		linearMomentum = vector.zero,
+		angularMomentum = Vector3.zero,
+		linearMomentum = Vector3.zero,
 
 		-- other state
-		force = vector.zero,
-		torque = vector.zero,
+		force = Vector3.zero,
+		torque = Vector3.zero,
 
 		-- inertia
 		invInertia = CF_ZERO,
@@ -157,7 +152,7 @@ function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
 	-- at all to this
 	local mass = part:GetMass()
 	local cframe = part.CFrame
-	local size = castVector(part.Size)
+	local size = part.Size
 	
 	-- get the other stuff please :D
 	local min, max = getExtentsSize(cframe, size)
@@ -182,16 +177,16 @@ function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
 		size = size,
 		
 		-- velocities
-		angularVelocity = castVector(part.AssemblyAngularVelocity),
-		linearVelocity = castVector(part.AssemblyLinearVelocity),
+		angularVelocity = part.AssemblyAngularVelocity,
+		linearVelocity = part.AssemblyLinearVelocity,
 
 		-- momentum
-		angularMomentum = vector.zero,
-		linearMomentum = vector.zero,
+		angularMomentum = Vector3.zero,
+		linearMomentum = Vector3.zero,
 		
 		-- other state
-		force = vector.create(0, -mass * GRAVITY, 0),
-		torque = vector.zero,
+		force = Vector3.new(0, -mass * GRAVITY, 0),
+		torque = Vector3.zero,
 		
 		-- inertia
 		invInertia = Mat3.toCFrame(Mat3.inverse(inertiaMat)),
@@ -208,28 +203,28 @@ function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
 	}
 end
 
-function Body.getSystemProps(parts: { BasePart }): (vector, number, Mat3)
+function Body.getSystemProps(parts: { BasePart }): (Vector3, number, Mat3)
 	-- gets the system properties of a specific system, good for
 	-- offsets and stuff ig lol
 	local mass = 0.0
 	local inertia = Mat3.identity
-	local centroid = vector.zero
+	local centroid = Vector3.zero
 	
 	for i, part in parts do
 		-- get the center of mass
 		local partMass = part:GetMass()
-		centroid += castVector(part.Position) * partMass
+		centroid += part.Position * partMass
 		mass += partMass
 	end
 	
 	centroid /= mass
 	for i, part in parts do
 		local partMass = part:GetMass()
-		local r = castVector(part.Position) - centroid
+		local r = part.Position - centroid
 
 		-- apply parallel axis theorem
-		local partInertia = getCubeInertia(partMass, castVector(part.Size))
-		inertia += (Mat3.identity * vector.dot(r, r) - Mat3.outerProduct(r)) * partMass
+		local partInertia = getCubeInertia(partMass, part.Size)
+		inertia += (Mat3.identity * r:Dot(r) - Mat3.outerProduct(r)) * partMass
 		inertia += Mat3.fromVector(partInertia)
 	end
 	

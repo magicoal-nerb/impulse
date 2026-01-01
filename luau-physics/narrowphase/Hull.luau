@@ -12,7 +12,7 @@ Hull.__index = Hull
 export type Support = Support.Support
 export type Face = {
 	verticies: { number },
-	normal: vector,
+	normal: Vector3,
 }
 
 export type Obj = {
@@ -20,10 +20,10 @@ export type Obj = {
 	support: Support,
 
 	-- center of mass
-	center: vector,
+	center: Vector3,
 
 	-- list of verticies
-	verticies: { vector },
+	verticies: { Vector3 },
 
 	-- edge and normal
 	normals: { [number]: number },
@@ -40,10 +40,10 @@ export type Hull = typeof(setmetatable({} :: {
 	support: Support,
 
 	-- center of mass
-	center: vector,
+	center: Vector3,
 
 	-- list of verticies
-	verticies: { vector },
+	verticies: { Vector3 },
 
 	-- edge and normal
 	normals: { [number]: number },
@@ -58,39 +58,39 @@ export type Hull = typeof(setmetatable({} :: {
 	ref: Obj,
 }, Hull))
 
-local function empty(v: vector): vector
+local function empty(v: Vector3): Vector3
 	-- empty support vector for
 	-- optimization purposes
-	return vector.zero
+	return Vector3.zero
 end
 
 local function areArcsIntersecting(
-	a: vector,
-	b: vector,
-	c: vector,
-	d: vector
+	a: Vector3,
+	b: Vector3,
+	c: Vector3,
+	d: Vector3
 ): boolean
 	-- this is another separating axis test, but now we check
 	-- if two lines on a plane collide
 	
-	local bxa = vector.cross(b,a)
-	local dxc = vector.cross(d,c)
+	local bxa = b:Cross(a)
+	local dxc = d:Cross(c)
 	
 	-- checks if the arc spanning a->b and c->d are
 	-- colliding. if it is, then we can test this pair
-	local cba = vector.dot(c, bxa)
-	local dba = vector.dot(d, bxa)
-	local adc = vector.dot(a, dxc)
-	local bdc = vector.dot(b, dxc)
+	local cba = c:Dot(bxa)
+	local dba = d:Dot(bxa)
+	local adc = a:Dot(dxc)
+	local bdc = b:Dot(dxc)
 	
 	return cba*dba <= 0.0 and adc*bdc <= 0.0 and 0.0 <= cba*bdc
 end
 
 local function raycastTriangle(
-	tri: { vector },
-	origin: vector,
-	direction: vector
-): (number, vector, vector)
+	tri: { Vector3 },
+	origin: Vector3,
+	direction: Vector3
+): (number, Vector3, Vector3)
 	-- https://en.wikipedia.org/wiki/Möller–Trumbore_intersection_algorithm
 	local a = tri[1]
 	local b = tri[2]
@@ -99,46 +99,46 @@ local function raycastTriangle(
 	local ab = b - a
 	local ac = c - a
 
-	local rayAC = vector.cross(direction, ac)
-	local det = vector.dot(ab, rayAC)
+	local rayAC = direction:Cross(ac)
+	local det = ab:Dot(rayAC)
 	if math.abs(det) < EPSILON then
 		-- the ray is parallel to the triangle
-		return 1, vector.zero, vector.zero
+		return 1, Vector3.zero, Vector3.zero
 	end
 
 	local invDet = 1.0 / det
 	local s = origin - a
-	local u = invDet * vector.dot(s, rayAC)
+	local u = invDet * s:Dot(rayAC)
 
 	if (u > 1 and math.abs(u - 1) > EPSILON)
 	or (u < 0 and math.abs(u) > EPSILON) then
 		-- first case, u is out of bounds
-		return 1, vector.zero, vector.zero
+		return 1, Vector3.zero, Vector3.zero
 	end
 
-	local se = vector.cross(s, ab)
-	local v = invDet*vector.dot(direction, se)
+	local se = s:Cross(ab)
+	local v = invDet*direction:Dot(se)
 	if (u + v > 1 and math.abs(u + v - 1) > EPSILON)
 	or (v < 0 and math.abs(v) > EPSILON) then
 		-- second case, v is out of bounds
-		return 1, vector.zero, vector.zero
+		return 1, Vector3.zero, Vector3.zero
 	end
 
-	local t = invDet*vector.dot(ac, se)	
+	local t = invDet*ac:Dot(se)	
 	if t > EPSILON then
 		-- the ray hits the triangle
 		return t,
 			origin+direction*t,
-			vector.normalize(vector.cross(ab, ac))
+			ab:Cross(ac).Unit
 	else
 		-- the ray does not hit the triangle
-		return 1, vector.zero, vector.zero
+		return 1, Vector3.zero, Vector3.zero
 	end
 end
 
-local function createCentroid(verticies: { vector }): vector
+local function createCentroid(verticies: { Vector3 }): Vector3
 	-- calculate center from point cloud
-	local centroid = vector.zero
+	local centroid = Vector3.zero
 	for i, vertex in verticies do
 		centroid += vertex
 	end
@@ -146,21 +146,15 @@ local function createCentroid(verticies: { vector }): vector
 	return centroid / #verticies
 end
 
-local function castVector(vec: Vector3): vector
-	-- roblox should just make a cast here, but we have
-	-- to do this explicitly
-	return vector.create(vec.X, vec.Y, vec.Z)
-end
-
-local function createSupportQuery(verticies: { vector }): Support
-	return function(direction: vector)
+local function createSupportQuery(verticies: { Vector3 }): Support
+	return function(direction: Vector3): Vector3
 		-- get the vertex with the highest dot
 		-- product with the direction
 		local bestDot = -math.huge
 		local bestItr = 0
 
 		for i, point in verticies do
-			local dot = vector.dot(point, direction)
+			local dot = point:Dot(direction)
 			if bestDot < dot then
 				bestDot = dot
 				bestItr = i
@@ -172,15 +166,15 @@ local function createSupportQuery(verticies: { vector }): Support
 end
 
 local function queryEdge(
-	verticies: { vector },
+	verticies: { Vector3 },
 	edge: number
-): (vector, vector)
+): (Vector3, Vector3)
 	-- query edges of the verticies please
 	return verticies[bit32.band(edge, 0xFFFF)],
 		verticies[bit32.rshift(edge, 16)]
 end
 
-function Hull.queryEdge(hullA: Hull, edge: number): (vector, vector)
+function Hull.queryEdge(hullA: Hull, edge: number): (Vector3, Vector3)
 	-- query edges of the verticies please
 	return hullA.verticies[bit32.band(edge, 0xFFFF)],
 		hullA.verticies[bit32.rshift(edge, 16)]
@@ -193,7 +187,7 @@ local function twin(edge: number): number
 	return bit32.lshift(b, 16) + a
 end
 
-function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (vector, number, number, number)
+function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, number, number)
 	-- check all possible edge combinations of A and B as potential separating
 	-- axes. only happens in 3D
 	local facesA = hullA.faces
@@ -205,7 +199,7 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (vector, number, nu
 	local normsA = hullA.normals
 	local normsB = hullB.normals
 
-	local bestDirection = vector.zero
+	local bestDirection = Vector3.zero
 	local bestDistance = -math.huge
 	local bestEdgeA = 0
 	local bestEdgeB = 0
@@ -228,11 +222,11 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (vector, number, nu
 			local dirCD = pointD - pointC
 
 			-- compute the separating axis
-			local axis = vector.cross(dirAB, dirCD)
-			if vector.dot(axis, axis) < 1e-3 then
+			local axis = dirAB:Cross(dirCD)
+			if axis:Dot(axis) < 1e-3 then
 				-- these two edges are parallel
 				continue
-			elseif vector.dot(axis, pointA - pointC) < 0.0 then
+			elseif axis:Dot(pointA - pointC) < 0.0 then
 				-- flip
 				axis = -axis
 			end
@@ -250,8 +244,8 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (vector, number, nu
 			end
 
 			-- check the support point of B onto A
-			local direction = vector.normalize(axis)
-			local distance = vector.dot(pointC - pointA, direction)
+			local direction = axis.Unit
+			local distance = (pointC - pointA):Dot(direction)
 						
 			if bestDistance < distance then
 				-- mark our direction and edges
@@ -283,7 +277,7 @@ function Hull.queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
 		local vertexA = vertsA[face.verticies[1]]
 		local vertexB = hullB.support(-normal)
 		
-		local distance = vector.dot(vertexB - vertexA, normal)
+		local distance = (vertexB - vertexA):Dot(normal)
 		if bestDistance < distance then
 			bestDistance = distance
 			bestFace = i
@@ -298,42 +292,42 @@ end
 function Hull.update(
 	self: Hull,
 	cframe: CFrame,
-	size: vector
+	size: Vector3
 )
 	-- clones a base hull, good for parts
 	local ref = self.ref
 
-	local centroid = vector.zero
+	local centroid = Vector3.zero
 	local verticies = self.verticies
 	local faces = self.faces
 	
 	for i, vertex in ref.verticies do
 		-- create our own vertex since it changed
-		local point = castVector(cframe:PointToWorldSpace(vertex * size))
+		local point = cframe:PointToWorldSpace(vertex * size)
 		centroid += point
 		verticies[i] = point
 	end
 
-	local invSize = vector.one / size
+	local invSize = Vector3.one / size
 	for i, face in ref.faces do
 		-- make a new normal but preserve
 		-- verticies table
-		local normal = castVector(cframe:VectorToWorldSpace(face.normal * invSize))
-		faces[i].normal = vector.normalize(normal)
+		local normal = cframe:VectorToWorldSpace(face.normal * invSize)
+		faces[i].normal = normal.Unit
 	end
 	
-	self.center = castVector(cframe.Position)
+	self.center = cframe.Position
 end
 
 function Hull.raycast(
 	self: Hull,
-	origin: vector,
-	direction: vector
-): (number, vector, vector)
+	origin: Vector3,
+	direction: Vector3
+): (number, Vector3, Vector3)
 	local verticies = self.verticies
-	local temporary = table.create(3, vector.zero)
+	local temporary = table.create(3, Vector3.zero)
 
-	local bestNormal = vector.zero
+	local bestNormal = Vector3.zero
 	local bestT = 1.0
 
 	for i, face in self.faces do
@@ -367,36 +361,36 @@ end
 function Hull.new(
 	ref: Obj,
 	cframe: CFrame,
-	size: vector
+	size: Vector3
 ): Hull
 	local faces = {}
 	local refFaces = ref.faces
 	for i = 1, #ref.faces do
 		faces[i] = {
 			verticies = refFaces[i].verticies,
-			normal = vector.zero,
+			normal = Vector3.zero,
 		}
 	end
 	
-	local verticies = table.create(#ref.verticies, vector.zero) :: { vector }
+	local verticies = table.create(#ref.verticies, Vector3.zero) :: { Vector3 }
 	local self = setmetatable({
 		ref = ref,
 		support = empty,
-		center = castVector(cframe.Position),
+		center = cframe.Position,
 		verticies = verticies,
 		normals = ref.normals,
 		edges = ref.edges,
 		faces = faces :: { Face },
 	}, Hull)
 	
-	function self.support(direction: vector): vector
+	function self.support(direction: Vector3): Vector3
 		-- get the vertex with the highest dot
 		-- product with the direction
 		local bestDot = -math.huge
 		local bestItr = 0
 
 		for i, point in verticies do
-			local dot = vector.dot(point, direction)
+			local dot = point:Dot(direction)
 			if bestDot < dot then
 				bestDot = dot
 				bestItr = i
@@ -413,8 +407,8 @@ end
 function Hull.fromObj(obj: string): Obj
 	-- creates a hull from an obj so yeah
 	local edgeNormals = {} :: { [number]: number }
-	local verticies = {} :: { vector }
-	local normals = {} :: { vector }
+	local verticies = {} :: { Vector3 }
+	local normals = {} :: { Vector3 }
 	local edges = {} :: { number }
 	local faces = {} :: { Face }
 
@@ -424,7 +418,7 @@ function Hull.fromObj(obj: string): Obj
 
 		if command == 'f' then
 			-- face
-			local normal = vector.zero
+			local normal = Vector3.zero
 			local verts = {} :: { number }
 			
 			repeat
@@ -441,7 +435,7 @@ function Hull.fromObj(obj: string): Obj
 
 			local faceId = #faces + 1
 			local length = #verts
-			normal = vector.normalize(normal / length)
+			normal = (normal / length).Unit
 			
 			local k = length
 			for j = 1, length do
@@ -459,14 +453,14 @@ function Hull.fromObj(obj: string): Obj
 			})
 		elseif command == 'v' then
 			-- vertex
-			table.insert(verticies, vector.create(
+			table.insert(verticies, Vector3.new(
 				tonumber(token()) :: number,
 				tonumber(token()) :: number,
 				tonumber(token()) :: number
 			))
 		elseif command == 'vn' then
 			-- vertex normal
-			table.insert(normals, vector.create(
+			table.insert(normals, Vector3.new(
 				tonumber(token()) :: number,
 				tonumber(token()) :: number,
 				tonumber(token()) :: number

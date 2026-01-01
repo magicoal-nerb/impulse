@@ -4,37 +4,37 @@
 -- sorting the data. however, it minimizes costs the most
 -- using bonsai prune
 
-local VEC_INF = vector.one * math.huge
+local VEC_INF = Vector3.one * math.huge
 
 export type Node = {
-	center: vector,
-	min: vector,
-	max: vector,
+	center: Vector3,
+	min: Vector3,
+	max: Vector3,
 }
 
-local function sah(delta: vector): number
+local function sah(delta: Vector3): number
 	-- the main cost function of our tree
-	return delta.x*delta.y + delta.z*delta.x + delta.z*delta.y
+	return delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.Y
 end
 
 local function quickSort(
 	array: { Node },
 	l: number,
 	r: number,
-	axis: vector
+	axis: Vector3
 )
 	if l >= r then
 		return
 	end
 
 	-- i chose the middle partition
-	local pivot = vector.dot(array[(l+r)//2].center, axis)
+	local pivot = array[(l+r)//2].center:Dot(axis)
 	local eq = l
 	local lt = l
 	local gt = r
 
 	while eq <= gt do
-		local dot = vector.dot(array[eq].center, axis)
+		local dot = array[eq].center:Dot(axis)
 		if dot < pivot then
 			-- left hand side
 			array[eq], array[lt] = array[lt], array[eq]
@@ -55,14 +55,14 @@ local function quickSort(
 end
 
 local BvhAxes = {
-	vector.create(1, 0, 0),
-	vector.create(0, 1, 0),
-	vector.create(0, 0, 1),
+	Vector3.new(1, 0, 0),
+	Vector3.new(0, 1, 0),
+	Vector3.new(0, 0, 1),
 }
 
 export type Box = {
-	min: vector,
-	max: vector,
+	min: Vector3,
+	max: Vector3,
 }
 
 return function(
@@ -74,8 +74,8 @@ return function(
 	for i = start, finish do
 		-- union box
 		local leaf = leaves[i]
-		box.min = vector.min(box.min, leaf.min)
-		box.max = vector.max(box.max, leaf.max)
+		box.min = box.min:Min(leaf.min)
+		box.max = box.max:Max(leaf.max)
 	end
 
 	local bestIndex = -1
@@ -98,8 +98,8 @@ return function(
 		for i = 1, length do
 			-- Go from the right to the left side
 			local leaf = leaves[finish + 1 - i]
-			boxMin = vector.min(boxMin, leaf.min)
-			boxMax = vector.max(boxMax, leaf.max)
+			boxMin = boxMin:Min(leaf.min)
+			boxMax = boxMax:Max(leaf.max)
 
 			costs[length - i + 1] = sah(boxMax - boxMin) * i
 		end
@@ -109,26 +109,26 @@ return function(
 		for i = 1, length - 1 do
 			-- go from the left to the right side
 			local leaf = leaves[start + i - 1]
-			boxMin = vector.min(boxMin, leaf.min)
-			boxMax = vector.max(boxMax, leaf.max)
+			boxMin = boxMin:Min(leaf.min)
+			boxMax = boxMax:Max(leaf.max)
 
 			local cost = sah(boxMax - boxMin)*i + costs[i+1]
 			if cost < bestCost then
 				bestCost = cost
 				bestAxis = axis
-				bestIndex = vector.dot(leaf.center, axis)
+				bestIndex = leaf.center:Dot(axis)
 			end
 		end
 	end
 
 	-- unstable partition
 	local ptr = start
-	while ptr < finish and vector.dot(leaves[ptr].center, bestAxis) <= bestIndex do
+	while ptr < finish and leaves[ptr].center:Dot(bestAxis) <= bestIndex do
 		ptr += 1
 	end
 
 	for i = ptr + 1, finish do
-		if vector.dot(leaves[i].center, bestAxis) <= bestIndex then
+		if leaves[i].center:Dot(bestAxis) <= bestIndex then
 			-- swap to preserve partition property
 			-- that is, <=[start, ptr-1] >[ptr, finish]
 			leaves[i], leaves[ptr] = leaves[ptr], leaves[i]

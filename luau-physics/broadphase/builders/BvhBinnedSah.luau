@@ -2,20 +2,20 @@
 
 -- binned sah builder ejemplo
 
-local VEC_INF = vector.one * math.huge
+local VEC_INF = Vector3.one * math.huge
 local BINS = 8
 
 export type Bin = Node & { count: number }
 export type Node = {
-	center: vector,
-	min: vector,
-	max: vector,
+	center: Vector3,
+	min: Vector3,
+	max: Vector3,
 }
 
-local BvhSahAxes: { vector } = table.freeze({
-	vector.create(1, 0, 0),
-	vector.create(0, 1, 0),
-	vector.create(0, 0, 1),
+local BvhSahAxes: { Vector3 } = table.freeze({
+	Vector3.new(1, 0, 0),
+	Vector3.new(0, 1, 0),
+	Vector3.new(0, 0, 1),
 })
 
 local function getNodeCost(node: Bin): number
@@ -26,12 +26,12 @@ local function getNodeCost(node: Bin): number
 	end
 
 	local delta = node.max - node.min
-	return 2*(delta.x*delta.y + delta.z*delta.x + delta.z*delta.y)*node.count
+	return 2*(delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.Y)*node.count
 end
 
 local function createEmptyBbox(): Bin
 	return {
-		center = vector.zero,
+		center = Vector3.zero,
 		count = 0,
 		max = -VEC_INF,
 		min = VEC_INF,
@@ -46,8 +46,8 @@ return function(
 ): number
 	for i = leftIndex, rightIndex do
 		local node = leaves[i]
-		box.min = vector.min(box.min, node.min)
-		box.max = vector.max(box.max, node.max)
+		box.min = box.min:Min(node.min)
+		box.max = box.max:Max(node.max)
 	end
 
 	local delta = box.max - box.min
@@ -59,7 +59,7 @@ return function(
 
 	for i, axis in BvhSahAxes do
 		-- Create bins
-		local dot = vector.dot(delta, axis)
+		local dot = delta:Dot(axis)
 		if dot < 1e-2 then
 			-- Don't use this.
 			continue
@@ -72,15 +72,15 @@ return function(
 		end
 
 		-- Populate bins
-		local minBounds = vector.dot(box.min, axis)
+		local minBounds = box.min:Dot(axis)
 		for j = leftIndex, rightIndex do
 			local node = leaves[j]
-			local index = (vector.dot(node.center, axis) - minBounds) * invSplitT
+			local index = (node.center:Dot(axis) - minBounds) * invSplitT
 			index = (index // 1) + 1
 
 			local bin = bins[index]
-			bin.min = vector.min(bin.min, node.min)
-			bin.max = vector.max(bin.max, node.max)
+			bin.min = bin.min:Min(node.min)
+			bin.max = bin.max:Max(node.max)
 			bin.count += 1
 		end
 
@@ -90,8 +90,8 @@ return function(
 		for j = 1, BINS do
 			local leftBin = bins[j]
 			if leftBin.count > 0 then
-				leftBox.min = vector.min(leftBox.min, leftBin.min)
-				leftBox.max = vector.max(leftBox.max, leftBin.max)
+				leftBox.min = leftBox.min:Min(leftBin.min)
+				leftBox.max = leftBox.max:Max(leftBin.max)
 				leftBox.count += leftBin.count
 			end
 
@@ -104,8 +104,8 @@ return function(
 
 			local rightBin = bins[j]
 			if rightBin.count > 0 then
-				rightBox.min = vector.min(rightBox.min, rightBin.min)
-				rightBox.max = vector.max(rightBox.max, rightBin.max)
+				rightBox.min = rightBox.min:Min(rightBin.min)
+				rightBox.max = rightBox.max:Max(rightBin.max)
 				rightBox.count += rightBin.count
 			end
 		end
@@ -125,12 +125,12 @@ return function(
 	assert(bestBin)
 
 	-- Partition data along the split position through swaps.
-	local splitPosition = vector.dot(box.min + (bestBin / (BINS + 1)) * delta, axis)
+	local splitPosition = (box.min + (bestBin / (BINS + 1)) * delta):Dot(axis)
 	local left = leftIndex
 	local right = rightIndex
 	while left < right do
-		if vector.dot(leaves[left].center, axis) >= splitPosition then
-			while left < right and vector.dot(leaves[right].center, axis) >= splitPosition do
+		if leaves[left].center:Dot(axis) >= splitPosition then
+			while left < right and leaves[right].center:Dot(axis) >= splitPosition do
 				right -= 1
 			end
 
