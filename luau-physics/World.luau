@@ -62,7 +62,7 @@ end
 function World.addDynamicBody(part: BasePart): Body
 	-- adds a dynamic body to the bvh
 	local body = Body.newDynamic(part, getShape(part))
-	local id = World.bvh:insert(body :: any)
+	local id = World.bvh:insert(World.bvh.createNode(body))
 	World.bodies[id] = body
 	World.active[id] = true
 	part.Anchored = true
@@ -337,7 +337,7 @@ function World.integrateBodies(dt: number)
 		-- update the current hull with the new
 		-- updated stuff
 		bvh:update(
-			body :: any,
+			id,
 			getExtentsSize(body.cframe, body.size)
 		)
 		

@@ -6,6 +6,7 @@ local BvhBinnedSah = require("./builders/BvhBinnedSah")
 local Queue = require("./Queue")
 
 local VEC_INF = Vector3.one * math.huge
+local FAT_AABB = Vector3.one
 
 -- Truthfully we only care if a node's id
 -- is solely FLAG_BRANCH, because that is an internal
@@ -173,13 +174,13 @@ function Bvh.queryPoint<T>(
 			end
 		else
 			-- branch node => queue
-			local l = nodes[node.left] :: any
+			local l = nodes[node.left]
 			if l and doesAABBCollidePoint(l.min, l.max, point) then
 				-- add left node
 				queue:enqueue(node.left)
 			end
 
-			local r = nodes[node.right] :: any
+			local r = nodes[node.right]
 			if r and doesAABBCollidePoint(r.min, r.max, point) then
 				-- add right node
 				queue:enqueue(node.right)
@@ -374,7 +375,7 @@ function Bvh.remove<T>(self: Bvh<T>, node: BvhNode<T>)
 	local index = node.id
 
 	local parent = node.parent
-	local parentNode = nodes[parent] :: any
+	local parentNode = nodes[parent]
 	
 	if self.root == index then
 		-- add to freelist 
@@ -650,7 +651,7 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 		-- find the split, which in this case
 		-- we'll use a binned sah
 		local partition = BvhBinnedSah(
-			leaves :: any, 
+			leaves :: { BvhBinnedSah.Node }, 
 			branch, 
 			pair.leftIndex, 
 			pair.rightIndex
@@ -683,7 +684,11 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 	self.root = 1
 
 	-- do the bonsai prune to improve static tree cost
-	BvhBonsaiPrune(self :: any, nodes :: any, self.queue)
+	BvhBonsaiPrune(
+		self :: BvhBonsaiPrune.Bvh,
+		nodes :: { BvhBonsaiPrune.Box },
+		self.queue
+	)
 end
 
 function Bvh.getCost<T>(self: Bvh<T>): number
@@ -769,16 +774,15 @@ function Bvh.draw<T>(self: Bvh<T>)
 	end
 end
 
-local fatAABB = Vector3.one
-
 function Bvh.update<T>(
 	self: Bvh<T>,
-	node: BvhNode<T>,
+	id: number,
 	min0: Vector3,
 	max0: Vector3
 )
-	local min1 = node.min - fatAABB
-	local max1 = node.max + fatAABB
+	local node = self.nodes[id]
+	local min1 = node.min - FAT_AABB
+	local max1 = node.max + FAT_AABB
 
 	if min1.X <= min0.X and min1.Y <= min0.Y and min1.Z <= min0.Z 
 		and max0.X <= max1.X and max0.Y <= max1.Y and max0.Z <= max1.Z then
@@ -787,8 +791,8 @@ function Bvh.update<T>(
 	end
 	
 	-- reinsert because it is outside of the aabb range
-	node.min = min0 - fatAABB
-	node.max = max0 + fatAABB
+	node.min = min0 - FAT_AABB
+	node.max = max0 + FAT_AABB
 	
 	self:remove(node)
 	self:insert(node)

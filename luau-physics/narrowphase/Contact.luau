@@ -1,5 +1,4 @@
 --!native
---!nocheck
 --!strict
 
 local Body = require("../Body")
@@ -188,7 +187,7 @@ function Jacobian.new(
 end
 
 local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
-	if math.abs(normal.y) > 0.99 then
+	if math.abs(normal.Y) > 0.99 then
 		-- its up, so just pick the other two
 		-- basis vectors
 		return Vector3.xAxis, Vector3.zAxis
