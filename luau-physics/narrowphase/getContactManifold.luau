@@ -193,19 +193,19 @@ return function(
 	local faceA, distanceA = hullA:queryFaceDirections(hullB)
 	if EPSILON < distanceA then
 		-- we found a separating axis
-		return
+		return nil
 	end
 
 	local faceB, distanceB = hullB:queryFaceDirections(hullA)
 	if EPSILON < distanceB then
 		-- we found a separating axis
-		return
+		return nil
 	end
 	
 	local edgeAB, distanceAB, edgeA, edgeB = hullA:queryEdgeDirections(hullB)
 	if EPSILON < distanceAB then
 		-- we found a separating axis
-		return
+		return nil
 	end
 
 	-- check if we have greater separation on the faces, because
@@ -258,7 +258,7 @@ return function(
 	local cdab = cd:Cross(ab)
 	local t2 = math.clamp(caab:Dot(cdab) / cdab:Dot(cdab), 0.0, 1.0)
 	
-	--assert(math.abs(vector.magnitude(edgeAB) - 1) < 1e-2)
+	--assert(math.abs(edgeAB.Magnitude - 1) < 1e-2)
 	local rootA = a + ab * t1
 	local rootB = c + cd * t2
 	return {

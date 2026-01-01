@@ -24,7 +24,7 @@ local function createConvexSupport(
 		local bestItr = 0
 
 		for i, point in supports do
-			local dot = vector.dot(point, vec)
+			local dot = point:Dot(vec)
 			if bestDot < dot then
 				bestDot = dot
 				bestItr = i

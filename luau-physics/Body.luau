@@ -55,9 +55,9 @@ export type Body = {
 
 local function getWedgeInertia(mass: number, size: Vector3): Vector3
 	-- https://freedium.cfd/https://rjallain.medium.com/the-moment-of-inertia-tensor-for-a-triangle-18482978a938
-	local x = size.x
-	local y = size.y
-	local z = size.z
+	local x = size.X
+	local y = size.Y
+	local z = size.Z
 
 	return Vector3.new(
 		mass * z*z,
@@ -69,9 +69,9 @@ end
 local function getCubeInertia(mass: number, size: Vector3): Vector3
 	-- gets moment of inertia of a cube, we assume this
 	-- for all of the parts in our body
-	local x = size.x
-	local y = size.y
-	local z = size.z
+	local x = size.X
+	local y = size.Y
+	local z = size.Z
 	
 	return Vector3.new(
 		mass * (y*y + z*z),

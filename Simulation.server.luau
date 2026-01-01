@@ -2,6 +2,9 @@
 
 -- really basic simulation logic
 -- for the humanoid and world
+-- but, i advise you to make your own!!
+
+assert(not workspace.StreamingEnabled, "this simulation script assumes StreamingEnabled = false")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")

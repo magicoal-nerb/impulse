@@ -6,7 +6,7 @@
 local LuauPhysics = require("../luau-physics")
 local World = LuauPhysics.World
 
-export type RaycastResult = World.RaycastResult
+export type RaycastResult = LuauPhysics.RaycastResult
 
 local UPDATE_HZ = 480
 
@@ -126,54 +126,61 @@ function Humanoid.bindState(
 end
 
 function Humanoid.new(rootPart: BasePart): Humanoid
-	local angularVelocity = rootPart.AssemblyAngularVelocity
-	local linearVelocity = rootPart.AssemblyLinearVelocity
 	local character = rootPart.Parent :: Model
 	
 	-- these are used for calculating state stuff
 	local body = World.addDynamicBody(rootPart)
 	World.markBodyActive(body, true)
 	
-	return setmetatable({		
-		-- current state
-		angularVelocity = rootPart.AssemblyAngularVelocity,
-		linearVelocity = rootPart.AssemblyLinearVelocity,
-		rootCoord = rootPart.CFrame,
-		character = character,
-		
+	return setmetatable({
 		-- other state
 		ladderResult = {
 			normal = Vector3.zero,
 			hasLadder = false,
-		},
+		} :: LadderResult,
 
 		floorResult = {
 			position = Vector3.zero,
 			normal = Vector3.zero,
 			distance = 0.0,
-			
+
 			linearVelocity = Vector3.zero,
 			angularVelocity = Vector3.zero,
 			origin = Vector3.zero,
 		} :: FloorResult,
 		
+		-- current state
+		angularVelocity = rootPart.AssemblyAngularVelocity,
+		linearVelocity = rootPart.AssemblyLinearVelocity,
+		rootCoord = rootPart.CFrame,
+
 		-- physics state
 		inertia = body.inertia,
 		mass = body.mass,
-		state = Enum.HumanoidStateType.Running,
 		
-		-- props
+		-- used for state
+		state = Enum.HumanoidStateType.Running,
+		character = character,
+		
+		-- used for movement
 		moveDirection = Vector3.zero,
 		hipHeight = 2.0,
 		walkSpeed = 16.0,
 		jumpPower = 50.0,
-		jump = false,
 		
+		-- mouselock
+		lookAngle = Vector3.zAxis,
+		mouselock = false,
+		
+		-- physics body
 		body = body,
 		
-		-- state
+		-- used for physics
 		rootPart = rootPart,
 		clock = os.clock(),
+		
+		-- user jump
+		jump = false,
 	}, Humanoid)
 end
 
@@ -196,7 +203,7 @@ function Humanoid.getDesiredVelocity(self: Humanoid): Vector3
 	if ladderResult.hasLadder then
 		-- add the ladder velocity
 		local dot = self.moveDirection:Dot(ladderResult.normal)
-		desiredVelocity -= math.sign(dot) * walkSpeed * Vector3.yAxis
+		desiredVelocity -= math.sign(dot) * self.walkSpeed * Vector3.yAxis
 		desiredVelocity *= Vector3.yAxis
 	elseif floorPart then
 		-- add the floor velocity aswell
@@ -269,7 +276,7 @@ end
 function Humanoid.changeState(self: Humanoid, state: Enum.HumanoidStateType)
 	-- changes the state to another one instead
 	self.state = state
-	self.state:enter(self)
+	States[state].enter(self, 0.0)
 end
 
 function Humanoid.computeOrientTorque(self: Humanoid, dt: number): Vector3
@@ -393,7 +400,7 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	hysterisis += self.hipHeight
 
 	local floorResult = self.floorResult
-	local floorPart: BasePart
+	local floorPart: LuauPhysics.Body
 	
 	if floorResult.part then
 		-- if there was a floor, add onto
@@ -435,7 +442,7 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 			floorResult.position += result.Position
 			floorResult.distance += result.Distance
 			floorResult.normal += result.Normal
-			floorPart = result.Instance :: BasePart
+			floorPart = result.Instance
 		end
 	end
 	

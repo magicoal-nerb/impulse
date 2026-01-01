@@ -39,9 +39,9 @@ end
 
 function Mat3.outerProduct(vec: Vector3): Mat3
 	-- v^T * v
-	local x = vec.x
-	local y = vec.y
-	local z = vec.z
+	local x = vec.X
+	local y = vec.Y
+	local z = vec.Z
 	
 	return setmetatable({
 		{x*x, x*y, x*z},

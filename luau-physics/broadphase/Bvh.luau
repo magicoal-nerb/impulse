@@ -38,7 +38,7 @@ local function unionCost(
 	-- together. the cost function is just the surface
 	-- area of the boxes.
 	local delta = box0.max:Max(box1.max) - box0.min:Min(box1.min)
-	return 2*(delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.y)
+	return 2*(delta.X*delta.Y + delta.Z*delta.X + delta.Z*delta.Y)
 end
 
 local function doesAABBCollidePoint(
@@ -74,9 +74,9 @@ end
 
 local function doesAABBCollideRay(
 	node: Box,
-	origin: vector, 
-	invDir: vector, 
-	size: vector
+	origin: Vector3, 
+	invDir: Vector3, 
+	size: Vector3
 ): number
 	-- We know about a + bt = c, where t = (c - a)b
 	-- We use this relationship to calculate vMin, vMax
@@ -106,13 +106,19 @@ local function doesAABBCollideRay(
 		or -1
 end
 
-export type BvhNode<T> = Box & T & {
+export type BvhNode<T> = {
+	center: Vector3,
+	min: Vector3,
+	max: Vector3,
+	
 	flag: number,
 	left: number,
 	right: number,
 	id: number,
 	parent: number,
 	free: number,
+	
+	data: T,
 }
 
 export type Bvh<T> = typeof(setmetatable({} :: {
@@ -142,7 +148,8 @@ local BvhProxy: Box = {
 function Bvh.queryPoint<T>(
 	self: Bvh<T>,
 	min: Vector3,
-	max: Vector3
+	max: Vector3,
+	point: Vector3
 ): { number }
 	local nodes = self.nodes
 	if not nodes[self.root] then
@@ -150,7 +157,7 @@ function Bvh.queryPoint<T>(
 		return {}
 	end
 
-	local output = {} :: { BvhNode<T> }
+	local output = {} :: { number }
 	local queue = self.queue
 	queue:clear()
 	queue:enqueue(self.root)
@@ -444,9 +451,26 @@ function Bvh.getFreeIndex<T>(self: Bvh<T>): number
 	end
 end
 
-function Bvh.getObject<T>(self: Bvh<T>, id: number): BvhNode<T>
+function Bvh.createNode<T>(object: T & {min: Vector3, max: Vector3}): BvhNode<T>
+	return {
+		center = (object.min + object.max) * 0.5,
+		min = object.min,
+		max = object.max,
+
+		flag = FLAG_LEAF,
+		left = 0,
+		right = 0,
+		id = 0,
+		parent = 0,
+		
+		free = 0,
+		data = object,
+	}
+end
+
+function Bvh.getObject<T>(self: Bvh<T>, id: number): T
 	-- provides an object given the id
-	return self.nodes[id]
+	return self.nodes[id].data
 end
 
 function Bvh.insert<T>(self: Bvh<T>, leaf: BvhNode<T>): number
@@ -626,7 +650,7 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 		-- find the split, which in this case
 		-- we'll use a binned sah
 		local partition = BvhBinnedSah(
-			leaves, 
+			leaves :: any, 
 			branch, 
 			pair.leftIndex, 
 			pair.rightIndex
@@ -659,7 +683,7 @@ function Bvh.build<T>(self: Bvh<T>, leaves: { BvhNode<T> })
 	self.root = 1
 
 	-- do the bonsai prune to improve static tree cost
-	BvhBonsaiPrune(self :: any, nodes, self.queue)
+	BvhBonsaiPrune(self :: any, nodes :: any, self.queue)
 end
 
 function Bvh.getCost<T>(self: Bvh<T>): number

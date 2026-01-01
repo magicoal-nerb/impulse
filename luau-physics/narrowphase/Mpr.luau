@@ -52,7 +52,7 @@ return function(
 		-- such that we can replace the complement vertex with the proposed support point
 		if sameSide(n012:Dot(v3), -n012:Dot(v0)) then
 			-- Our origin lies on t_012
-			if vector.dot(n012, v0) < 0.0 then
+			if n012:Dot(v0) < 0.0 then
 				v1, v2 = v2, v1
 				n012 *= -1.0
 			end
@@ -63,7 +63,7 @@ return function(
 			end
 		elseif sameSide(n023:Dot(v1), -n023:Dot(v0)) then
 			-- Our origin lies on t_023
-			if vector.dot(n023, v0) < 0.0 then
+			if n023:Dot(v0) < 0.0 then
 				v2, v3 = v3, v2
 				n023 *= -1.0
 			end
@@ -98,13 +98,13 @@ return function(
 	local proj = v0 * (v1:Dot(normal) / v0:Dot(normal))
 	if tripleProduct(v12, v12, v13):Dot(proj-v1) > 0.0 then
 		-- Facing towards line V1, V2
-		return 1, vector.zero
+		return 1, Vector3.zero
 	elseif tripleProduct(-v13, v12, v13):Dot(proj-v1) > 0.0 then
 		-- Facing towards line V1, V3
-		return 1, vector.zero
+		return 1, Vector3.zero
 	elseif tripleProduct(v3-v2, v12, v13):Dot(proj-v2) > 0.0 then
 		-- Facing towards line V2, V3
-		return 1, vector.zero
+		return 1, Vector3.zero
 	end
 
 	-- Since we found a triangle that collides with our ray,

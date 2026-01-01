@@ -16,15 +16,18 @@ local SLEEP_TIMER = 1
 export type Arbiter = Arbiter.Arbiter
 export type Body = Body.Body
 export type Bvh = Bvh.Bvh<Body>
+export type Support = Hull.Support
 
 export type RaycastResult = {
-	Instance: Shape,
+	Instance: Body,
 	Position: Vector3,
 	Normal: Vector3,
 	Distance: number,
 }
 
 export type World = {
+	Gravity: number,
+	
 	numActive: number,
 	arbiters: { [number]: Arbiter },
 	active: { [number]: boolean },
@@ -35,7 +38,7 @@ export type World = {
 local World = {}
 World.Gravity = 196.2
 World.numActive = 0
-World.bvh = Bvh.new()
+World.bvh = Bvh.new() :: Bvh
 World.bodies = {}
 World.active = {}
 World.arbiters = {}
@@ -59,7 +62,7 @@ end
 function World.addDynamicBody(part: BasePart): Body
 	-- adds a dynamic body to the bvh
 	local body = Body.newDynamic(part, getShape(part))
-	local id = World.bvh:insert(body)
+	local id = World.bvh:insert(body :: any)
 	World.bodies[id] = body
 	World.active[id] = true
 	part.Anchored = true
@@ -68,8 +71,8 @@ end
 
 function World.addStaticBody(part: BasePart): Body
 	-- adds a static body to the bvh
-	local body = Body.newStatic(part, getShape(part))
-	local id = World.bvh:insert(body)
+	local body = Body.newStatic(part, getShape(part))	
+	local id = World.bvh:insert(World.bvh.createNode(body))
 	World.bodies[id] = body
 	
 	return body
@@ -214,13 +217,13 @@ function World.shapecast(
 	direction: Vector3,
 	shape: Support,
 	size: Vector3
-): (Shape?, Vector3, Vector3)
+): (Body?, Vector3, Vector3)
 	-- the size is the approximate size of the support point
 	-- think of it as the maximum bounding box
 	local bodies = World.bodies
 
 	local normal: Vector3 = Vector3.zero
-	local object: Shape?
+	local object: Body?
 	local t: number = 1.0
 
 	for i, hitId in World.bvh:trace(
@@ -316,10 +319,10 @@ function World.integrateBodies(dt: number)
 			local position = body.cframe.Position
 				+ (body.linearVelocity + body.linearMomentum)*dt
 			body.cframe = CFrame.new(
-				position.x, position.y, position.z,
-				sin * deltaAngularVelocity.x,
-				sin * deltaAngularVelocity.y,
-				sin * deltaAngularVelocity.z,
+				position.X, position.Y, position.Z,
+				sin * deltaAngularVelocity.X,
+				sin * deltaAngularVelocity.Y,
+				sin * deltaAngularVelocity.Z,
 				2 * cos * halfAngle
 			) * body.cframe.Rotation
 		else
@@ -334,7 +337,7 @@ function World.integrateBodies(dt: number)
 		-- update the current hull with the new
 		-- updated stuff
 		bvh:update(
-			body,
+			body :: any,
 			getExtentsSize(body.cframe, body.size)
 		)
 		
