@@ -1,5 +1,17 @@
 --!strict
 
+--[[
+	The EPA algorithm is an addition to the GJK algorithm where
+	we can extract the minimal translation vector from a terminating
+	GJK simplex. This is possible because(in my case atleast) GJK
+	enclosing a point results in the simplex being a tetrahedron.
+
+	The job of the EPA algorithm is to keep on sampling points that
+	will eventually hit the surface of the shape. If we found a triangle
+	closest to the origin that is on the surface, then we give back that triangle's
+	position, and its normal is our MTV normal!
+]]
+
 type Support = (Vector3) -> (Vector3)
 
 local J = { 2, 3, 1 }
@@ -157,10 +169,11 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 		end
 	end
 
-	-- If the current triangle is on the surface
-	-- of the mesh, then we can safely terminate
+	-- We will assume this triangle is on the surface
+	-- in order to terminate the algorithm. This may not be
+	-- entirely correct, but we can fix it next tick.
+
 	local normal = normals[bestTriangle]
 	local point = support(normal)
-
 	return -normal, point:Dot(normal)
 end

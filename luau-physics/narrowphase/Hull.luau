@@ -231,9 +231,9 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, n
 				axis = -axis
 			end
 
-			-- we remove points whose arcs
-			-- don't collide, as they are not
-			-- a valid separating axis
+			-- We remove points whose arcs
+			-- don't collide, as we know it will just
+			-- repeat!!
 			if not areArcsIntersecting(
 				normalA,
 				normalB,
@@ -243,12 +243,12 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, n
 				continue
 			end
 
-			-- check the support point of B onto A
+			-- Check the support point of B onto A
 			local direction = axis.Unit
 			local distance = (pointC - pointA):Dot(direction)
 						
 			if bestDistance < distance then
-				-- mark our direction and edges
+				-- Mark our direction and edges
 				bestDirection = direction
 				bestDistance = distance
 				bestEdgeA = edgeA
@@ -268,7 +268,7 @@ function Hull.queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
 	local bestDistance = -math.huge
 	local bestFace = 0
 
-	-- it is known for a convex shape, S(face.normal) lies on
+	-- It is known for a convex shape, support(face.normal) lies on
 	-- the current face
 	local vertsA = hullA.verticies	
 	for i, face in hullA.faces do
@@ -294,7 +294,7 @@ function Hull.update(
 	cframe: CFrame,
 	size: Vector3
 )
-	-- clones a base hull, good for parts
+	-- Clones a base hull, good for parts
 	local ref = self.ref
 
 	local centroid = Vector3.zero
@@ -335,9 +335,9 @@ function Hull.raycast(
 		local numVerts = #verts
 
 		for j = 1, numVerts - 1, 2 do
-			-- we assume that the convex face creates
+			-- We assume that the convex face creates
 			-- a triangle fan, so we just keep on testing
-			-- if our ray hits the triangle
+			-- if our ray hits the triangle.
 			temporary[3] = verticies[verts[((j + 1) % numVerts) + 1]]
 			temporary[2] = verticies[verts[(j % numVerts) + 1]]
 			temporary[1] = verticies[verts[j]]
@@ -384,8 +384,8 @@ function Hull.new(
 	}, Hull)
 	
 	function self.support(direction: Vector3): Vector3
-		-- get the vertex with the highest dot
-		-- product with the direction
+		-- Get the vertex with the highest dot
+		-- product with the direction.
 		local bestDot = -math.huge
 		local bestItr = 0
 
@@ -405,7 +405,7 @@ function Hull.new(
 end
 
 function Hull.fromObj(obj: string): Obj
-	-- creates a hull from an obj so yeah
+	-- Create a hull from an OBJ
 	local edgeNormals = {} :: { [number]: number }
 	local verticies = {} :: { Vector3 }
 	local normals = {} :: { Vector3 }
@@ -480,6 +480,8 @@ function Hull.fromObj(obj: string): Obj
 end
 
 function Hull.collides(self: Hull, with: Hull): boolean
+	-- Helper function to check if two objects
+	-- collide through GJK
 	return Gjk.isColliding(
 		self.support,
 		with.support,

@@ -5,6 +5,28 @@ local Gjk = {}
 
 export type Support = (direction: Vector3) -> Vector3
 
+--[[
+	The premise around the GJK algorithm is to create a shape such that
+	it contains the origin point. We care about the origin point because consider
+	a shape with an infinite amount of points inside of it. If these two shapes
+	collide, then if we get the difference of those two shapes' points, there must
+	exist atleast one point that is the origin point(ie. the zero vector).
+
+	Each step of this algorithm is trying to surround the origin point, and that
+	the length of the "simplex" (which you can consider as a hull of some points)
+	represents the shape it has.
+		Let n = |simplex|, if n = 1, it is a point.
+		n = 2 => line
+		n = 3 => triangle
+		n = 4 => tetrahedron
+
+	In the closest point query, my strategy is to compute the closest point of the simplex
+	and point opposite towards it.
+
+	In the general case, my strategy is to compute which shape normal faces the origin point
+	and we will search in that direction
+]]
+
 local function tripleProduct(
 	a: Vector3,
 	b: Vector3,

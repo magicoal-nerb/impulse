@@ -1,4 +1,14 @@
 --!strict
+
+--[[
+	MPR attempts to find a closest shape that collides with a ray.
+	ie, like a GJK which is biased on hitting a ray.
+
+	In essence, we are raycasting through the minkowski sum of an entire shape, so
+	think of the way Quake derived games do a "box trace," which in reality,
+	is just a raycast through an inflated version of the scene geometry.
+]]
+
 -- see https://arxiv.org/pdf/2304.07357
 local EPSILON = 1e-3
 

@@ -4,26 +4,44 @@
 local Body = require("../Body")
 
 --[[
-	Jv + b = 0
-	M(v_2 - v_1) + b = L*lambda
+	The high level overview of what I'm doing here is
+	basically making our old state vector[ie. the previous velocities of A and B]
+	no longer violate a constraint. A constraint is satisfied when it is 0, or if it
+	is a conditional constraint, when that condition is satisfied.
 
-	L is J^T because it is parallel to the constraint
-	plane
+	We derive the impulse model through the following:
+		Jv + b = 0 
+		M(v_2 - v_1) = L*lambda
 
-	M = [ m_a 0 0 0 ]
-	    [ 0 i_a 0 0 ]
-	    [ 0 0 m_b 0 ]
-	    [ 0 0 0 i_b ]
+	where J is the Jacobian matrix, and b is the baumgarte stabilization term.
+	B accounts for positional error, and J defines what the constraints for the state
+	velocities are.
+
+	A key insight is that L = J^T, because Jv + b defines some hyperplane. And, we know
+	that the direction of most increase in perpendicular to the plane, which is towards the
+	normal of the plane. Thus, we get:
+		(v_2 - v_1) = M^-1 * (J^T * lambda)
+		v_2 = M^-1 * (J^T * lambda) + v_1
+
+	After finding the next state vector, we essentially find a new state vector that
+	does satisfy the constraint plane. From backsubstitution, we get:
+		J(M^-1 * J^T * lambda + v_1) + b = 0
+		lambda = -(Jv_1 + b) / (J * M^-1 * J^T)
+
+	A crucial insight is that J a row vector that represents where we want our system state
+	to move to(so it's 1 x N). Moreover, M^-1 is actually in the inverse mass matrix, ie:
+		M = [ m_a 0 0 0 ]
+		    [ 0 i_a 0 0 ]
+		    [ 0 0 m_b 0 ]
+		    [ 0 0 0 i_b ]
 		    
-	M(v_2 - v_1) = J^T * lambda
-	v_2 = M^-1 (J^T * lambda) + v_1
-	
-	v = v_2 (new state)
-	J(M^-1 * J^T * lambda + v_1) + b = 0
-	J * M^-1 * J^T * lambda = -(J*v_1 + b)
-	
-	lambda = -(J*v_1 + b) / (J * M^-1 * J^T)
-	M_eff = 1.0 / (J * M^-1 * J^T)
+	which is (N x N). Thus, if we did:
+		J * (M^-1 * J^T) <=> [1 x N] x [(N x N) x (N x 1)]
+		<=> [1 x 1], a scalar!
+
+	We call this scalar the effective mass matrix.
+	Since we can now compute lambda, our next state vector is:
+		v_2 = M^-1 * (J^T * lambda) + v_1
 ]]
 
 local FLAG_NORMAL = 0x1
@@ -38,29 +56,29 @@ export type Contact = typeof(setmetatable({} :: {
 	bodyA: Body,
 	bodyB: Body,
 	
-	-- normal
+	-- Normal
 	friction: number,
 	normal: Vector3,
 	
-	-- offsets
+	-- Offsets
 	rA: Vector3,
 	rB: Vector3,
 	
-	-- jacobians
+	-- Jacobians
 	jN: Jacobian,
 	jT: Jacobian,
 	jB: Jacobian,
 }, Contact))
 
 export type Jacobian = {	
-	-- state variables
+	-- State variables
 	flag: number,
 	jva: Vector3,
 	jwa: Vector3,
 	jvb: Vector3,
 	jwb: Vector3,
 	
-	-- final bias
+	-- Final bias
 	bias: number,
 	effMass: number,
 	totLambda: number,
@@ -80,8 +98,8 @@ local function solveJacobian(
 		+ self.jvb:Dot(b.linearVelocity)
 		+ self.jwb:Dot(b.angularVelocity)
 
-	-- ensure that sum lambda_i >= 0, cannot clamp
-	-- lambda on its own. lambda is the difference between
+	-- Ensure that sum lambda_i >= 0, cannot clamp
+	-- lambda on its own. Lambda is the difference between
 	-- the clamped and previous lambda
 	local effMass = self.effMass
 	
@@ -125,11 +143,11 @@ function Jacobian.new(
 		C': ((v_b + w_b x r_b) - (v_a + w_a x r_a)). n >= 0
 		C': ((v_b - r_b x w_b) - (v_a - r_a x w_a)). n >= 0
 
-		know: a x b . c = c x a . b
+		Know: a x b . c = c x a . b
 		C': -(r_b x w_b).n + (r_a x w_a).n + (v_b - v_a).n
 		C': -(n x r_b).w_b + (n x r_a).w_a + (v_b - v_a).n
 
-		want: C' = JV + b
+		Want: C' = JV + b
 		J = [ -n^T (n x r_a)^T n^T -(n x r_b)^T ]
 		J = [ -n^T -(r_a x n)^T n^T (r_b x n)^T ]
 		V = [ v_a ]
@@ -148,14 +166,14 @@ function Jacobian.new(
 	local bias = 0.0
 	if flag == FLAG_NORMAL then
 		--[[
-			doing the bias term
+			Doing the bias term
 			C: (b - a) . n >= 0
 			
-			baumgarte stabilization term(error = C)
+			Baumgarte stabilization term(error = C)
 			b = -B/dt * C
 			b = -B/dt * (b-a).n
 			
-			restitution(dependant on C')
+			Restitution(dependant on C')
 			c = C'.n
 		]]
 
@@ -188,8 +206,8 @@ end
 
 local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
 	if math.abs(normal.Y) > 0.99 then
-		-- its up, so just pick the other two
-		-- basis vectors
+		-- It's up, so just pick the other two
+		-- basis vectors.
 		return Vector3.xAxis, Vector3.zAxis
 	else
 		-- tangent = y x normal
@@ -254,7 +272,7 @@ function Contact.new(
 end
 
 function Contact.solve(self: Contact, dt: number)
-	-- solve the jacobian
+	-- Solve the jacobian
 	solveJacobian(self.jN, self, dt)
 	solveJacobian(self.jT, self, dt)
 	solveJacobian(self.jB, self, dt)
