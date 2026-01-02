@@ -191,7 +191,7 @@ function World.integrateConstraints(dt: number)
 	-- integrates constraints such as contact constraints(for now)
 	debug.profilebegin("world::integrate_constraints")
 	
-	for i = 1, 6 do
+	for i = 1, 32 do
 		for id, arbiter in World.arbiters do
 			solveArbiter(arbiter, dt)
 		end

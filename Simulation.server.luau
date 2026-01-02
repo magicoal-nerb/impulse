@@ -6,6 +6,10 @@
 
 assert(not workspace.StreamingEnabled, "this simulation script assumes StreamingEnabled = false")
 
+local Pausing = false
+local HZ = 240
+
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -42,26 +46,60 @@ local function characterAdded()
 	RealHumanoid.EvaluateStateMachine = false
 	RealHumanoid:ChangeState(Enum.HumanoidStateType.Running)
 	rootPart.Anchored = true
+	rootPart.CFrame = workspace.tp.CFrame
 	
 	local baseHeight = if RealHumanoid.RigType == Enum.HumanoidRigType.R15
 		then 0.15
 		else 3
 	
+	
 	CurrentHumanoid = Humanoid.new(rootPart)
 	CurrentHumanoid.hipHeight = RealHumanoid.HipHeight + baseHeight
 end
 
-local HZ = 240
+-- debugging purposes
+ContextActionService:BindAction(
+	"pause-physics",
+	function(_, state: Enum.UserInputState)
+		if state == Enum.UserInputState.Begin then
+			Pausing = not Pausing
+		end
+	end,
+	false,
+	Enum.KeyCode.Q
+)
+
+ContextActionService:BindAction(
+	"step-physics",
+	function(_, state: Enum.UserInputState)
+		if state == Enum.UserInputState.Begin then
+			workspace.Wireframe:Clear()
+			
+			local state = CurrentHumanoid.state
+			CurrentHumanoid:update(1 / HZ)
+			if CurrentHumanoid.state ~= state then
+				RealHumanoid:ChangeState(CurrentHumanoid.state)
+			end
+			
+			World.step(1 / HZ)
+		end
+	end,
+	false,
+	Enum.KeyCode.E
+)
 
 local previous = os.clock()
 local function heartbeat(dt: number)
+	
 	local clock = os.clock()
-	if not CurrentHumanoid then
+	if not CurrentHumanoid or Pausing then
 		previous = clock
 		return
 	end
 	
 	local ticks = (clock - previous) * HZ
+	workspace.Wireframe:Clear()
+
 	--World.bvh:draw()
 
 	local t0 = 0.0
@@ -78,7 +116,7 @@ local function heartbeat(dt: number)
 		World.step(1 / HZ)
 	end
 
-	local remainder = (ticks % 1) / HZ
+	local remainder = ((ticks % 1) / HZ)
 	CurrentHumanoid:update(remainder)
 	if CurrentHumanoid.state ~= state then
 		RealHumanoid:ChangeState(CurrentHumanoid.state)
@@ -98,6 +136,9 @@ if LocalPlayer.Character then
 end
 
 LocalPlayer.CharacterAdded:Connect(characterAdded)
+
+task.wait(0.5)
+previous = os.clock()
 RunService.Heartbeat:Connect(heartbeat)
 
 -- initialize the world

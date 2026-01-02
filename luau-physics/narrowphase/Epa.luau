@@ -31,7 +31,11 @@ local function dual(a: number): number
 	return bit32.lshift(bit32.band(a, 0xFFFF), 16) + bit32.rshift(a, 16)
 end
 
-return function(simplex: { Vector3 }, support: Support): (Vector3, number)
+return function(
+	simplex: { Vector3 },
+	suppA: Support,
+	suppB: Support
+): (Vector3, number)
 	assert(#simplex == 4, "simplex should be a tetrahedron")
 	
 	local normals = table.create(4, Vector3.zero)
@@ -59,7 +63,7 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 		normals[i] = normal.Unit
 	end
 	
-	for i = 1, 16 do
+	for i = 1, 8 do
 		-- First, we check for the closest triangle
 		-- that encloses this simplex
 		local bestDistance = normals[1]:Dot(simplex[mesh[1][1]])
@@ -79,7 +83,7 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 		-- If the current triangle is on the surface
 		-- of the mesh, then we can safely terminate
 		local normal = normals[bestTriangle]
-		local point = support(normal)
+		local point = suppA(normal) - suppB(-normal)
 		
 		local distance = math.abs(normal:Dot(point) - bestDistance)
 		if math.abs(distance) < 1e-2 then
@@ -98,7 +102,7 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 		
 		for j, triangle in mesh do
 			local a = triangle[1]
-			if (point - simplex[a]):Dot(normal) <= 0 then
+			if normals[j]:Dot(normal) <= 0 then
 				-- It is behind the simplex point, so we
 				-- can keep this
 				table.insert(newMesh, triangle)
@@ -121,7 +125,7 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 		table.insert(simplex, point)
 		
 		local id = #simplex
-		for j, edge in edgelist do
+		for edge in edgelist do
 			if edgelist[dual(edge)] then
 				-- This cannot be a boundary edge
 				-- because the dual of it exists
@@ -139,13 +143,13 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 				continue
 			elseif normal:Dot(point) < 0 then
 				-- The triangle is pointing away the point
-				table.insert(newNormals, -normal)
-				table.insert(newMesh, { a, b, id })
+				table.insert(newNormals, -normal.Unit)
 			else
 				-- The triangle is pointing towards the point
-				table.insert(newNormals, normal)
-				table.insert(newMesh, { b, a, id })
+				table.insert(newNormals, normal.Unit)
 			end
+			
+			table.insert(newMesh, { a, b, id })
 		end
 		
 		-- Update our current state
@@ -174,6 +178,6 @@ return function(simplex: { Vector3 }, support: Support): (Vector3, number)
 	-- entirely correct, but we can fix it next tick.
 
 	local normal = normals[bestTriangle]
-	local point = support(normal)
+	local point = suppA(normal) - suppB(-normal)
 	return -normal, point:Dot(normal)
 end

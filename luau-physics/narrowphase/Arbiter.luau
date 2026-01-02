@@ -1,14 +1,15 @@
 --!native
 --!strict
 
-local FLAG_DEBUG = true
 local EPSILON = 1e-2
 
+local getContactIncrement = require("./getContactIncrement")
+local getContactManifold = require("./getContactManifold")
 
 local Contact = require("./Contact")
 local Body = require("../Body")
 local Gjk = require("./Gjk")
-local Sat = require("./Sat")
+local Epa = require("./Epa")
 
 export type Contact = Contact.Contact
 export type Body = Body.Body
@@ -19,10 +20,10 @@ Arbiter.__index = Arbiter
 export type Arbiter = {
 	shapeA: Body,
 	shapeB: Body,
-	
+
 	rotA: CFrame,
 	rotB: CFrame,
-	
+
 	contacts: { [Vector3]: Contact },
 }
 
@@ -41,7 +42,7 @@ local function getClosestPoint(set: { Vector3 }, to: Vector3): Vector3
 			dotB = dot
 		end
 	end
-	
+
 	return pointB
 end
 
@@ -49,12 +50,14 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	-- Add contacts for A->B
 	local originA = shapeA.hull.center
 	local originB = shapeB.hull.center
-	
-	local manifold = Sat(shapeA.hull, shapeB.hull)
+
+	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
 	if not manifold then
+		-- If we can't generate a contact manifold, then we
+		-- are not colliding
 		return nil
 	end
-	
+
 	local contacts = {}
 	for i, pointA in manifold.contactA do		
 		-- Get the closest point to apply the impulse
@@ -62,7 +65,7 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 		local pointB = getClosestPoint(manifold.contactB, pointA)
 		local rA = pointA - originA
 		local rB = pointB - originB
-		
+
 		-- We do this for warm starting, I arbritrarily
 		-- chose rA as the hash
 		local id = (rA * 1e3):Floor()
@@ -74,14 +77,14 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 			manifold.sepB -- depth
 		)
 	end
-	
+
 	return {
 		shapeA = shapeA,
 		shapeB = shapeB,
-		
+
 		rotA = shapeA.cframe.Rotation:Inverse(),
 		rotB = shapeB.cframe.Rotation:Inverse(),
-		
+
 		contacts = contacts
 	}
 end
@@ -89,8 +92,8 @@ end
 function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
-	
-	local manifold = Sat(shapeA.hull, shapeB.hull)
+
+	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
 	if not manifold then
 		-- If we can't generate a contact manifold, then we
 		-- are no longer colliding
@@ -100,7 +103,7 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 	-- add contacts for A->B
 	local originA = shapeA.hull.center
 	local originB = shapeB.hull.center
-	
+
 	local contacts = {}
 	for i, pointA in manifold.contactA do
 		-- Get the closest point to apply the impulse
@@ -108,7 +111,7 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 		local pointB = getClosestPoint(manifold.contactB, pointA)
 		local rA = pointA - originA
 		local rB = pointB - originB	
-		
+
 		local contact = Contact.new(
 			shapeA, shapeB,
 			-manifold.axisB, -- normal
@@ -127,10 +130,10 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 			contact.jT.totLambda = closest.jB.totLambda
 			contact.jB.totLambda = closest.jT.totLambda
 		end
-		
+
 		contacts[id] = contact
 	end
-	
+
 	self.contacts = contacts
 	return self
 end

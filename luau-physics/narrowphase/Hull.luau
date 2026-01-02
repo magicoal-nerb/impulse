@@ -59,31 +59,32 @@ export type Hull = typeof(setmetatable({} :: {
 }, Hull))
 
 local function empty(v: Vector3): Vector3
-	-- empty support vector for
+	-- Empty support vector for
 	-- optimization purposes
 	return Vector3.zero
 end
 
 local function areArcsIntersecting(
+	bxa: Vector3,
+	dxc: Vector3,
+	
 	a: Vector3,
 	b: Vector3,
 	c: Vector3,
 	d: Vector3
 ): boolean
-	-- this is another separating axis test, but now we check
-	-- if two lines on a plane collide
-	
-	local bxa = b:Cross(a)
-	local dxc = d:Cross(c)
-	
-	-- checks if the arc spanning a->b and c->d are
-	-- colliding. if it is, then we can test this pair
+	-- Checks if the arc spanning a->b and c->d are
+	-- colliding. If it is, then we can test this pair
 	local cba = c:Dot(bxa)
 	local dba = d:Dot(bxa)
 	local adc = a:Dot(dxc)
 	local bdc = b:Dot(dxc)
 	
-	return cba*dba <= 0.0 and adc*bdc <= 0.0 and 0.0 <= cba*bdc
+	local sameHemisphere = 0.0 < cba * bdc
+	local arcIntersection = cba * dba < 0.0
+		and adc * bdc < 0.0
+	
+	return sameHemisphere and arcIntersection
 end
 
 local function raycastTriangle(
@@ -102,7 +103,7 @@ local function raycastTriangle(
 	local rayAC = direction:Cross(ac)
 	local det = ab:Dot(rayAC)
 	if math.abs(det) < EPSILON then
-		-- the ray is parallel to the triangle
+		-- The ray is parallel to the triangle
 		return 1, Vector3.zero, Vector3.zero
 	end
 
@@ -112,7 +113,7 @@ local function raycastTriangle(
 
 	if (u > 1 and math.abs(u - 1) > EPSILON)
 	or (u < 0 and math.abs(u) > EPSILON) then
-		-- first case, u is out of bounds
+		-- First case, u is out of bounds
 		return 1, Vector3.zero, Vector3.zero
 	end
 
@@ -120,13 +121,13 @@ local function raycastTriangle(
 	local v = invDet*direction:Dot(se)
 	if (u + v > 1 and math.abs(u + v - 1) > EPSILON)
 	or (v < 0 and math.abs(v) > EPSILON) then
-		-- second case, v is out of bounds
+		-- Second case, v is out of bounds
 		return 1, Vector3.zero, Vector3.zero
 	end
 
 	local t = invDet*ac:Dot(se)	
 	if t > EPSILON then
-		-- the ray hits the triangle
+		-- The ray hits the triangle
 		return t,
 			origin+direction*t,
 			ab:Cross(ac).Unit
@@ -137,7 +138,7 @@ local function raycastTriangle(
 end
 
 local function createCentroid(verticies: { Vector3 }): Vector3
-	-- calculate center from point cloud
+	-- Calculate center from point cloud
 	local centroid = Vector3.zero
 	for i, vertex in verticies do
 		centroid += vertex
@@ -169,18 +170,19 @@ local function queryEdge(
 	verticies: { Vector3 },
 	edge: number
 ): (Vector3, Vector3)
-	-- query edges of the verticies please
+	-- Query edges of the verticies
 	return verticies[bit32.band(edge, 0xFFFF)],
 		verticies[bit32.rshift(edge, 16)]
 end
 
 function Hull.queryEdge(hullA: Hull, edge: number): (Vector3, Vector3)
-	-- query edges of the verticies please
+	-- Query edges of the verticies
 	return hullA.verticies[bit32.band(edge, 0xFFFF)],
 		hullA.verticies[bit32.rshift(edge, 16)]
 end
 
 local function twin(edge: number): number
+	-- Gets the dual
 	local a = bit32.rshift(edge, 16)
 	local b = bit32.band(edge, 0xFFFF)
 	
@@ -188,8 +190,8 @@ local function twin(edge: number): number
 end
 
 function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, number, number)
-	-- check all possible edge combinations of A and B as potential separating
-	-- axes. only happens in 3D
+	-- Check all possible edge combinations of A and B as potential separating
+	-- axes. Only happens in 3D
 	local facesA = hullA.faces
 	local facesB = hullB.faces
 	
@@ -214,40 +216,48 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, n
 		local dirAB = pointB - pointA
 
 		for j, edgeB in hullB.edges do
-			-- get the edge from B
+			-- Get the edge from B
 			local normalD = facesB[normsB[twin(edgeB)]].normal
 			local normalC = facesB[normsB[edgeB]].normal
 			
 			local pointC, pointD = queryEdge(vertsB, edgeB)
 			local dirCD = pointD - pointC
 
-			-- compute the separating axis
-			local axis = dirAB:Cross(dirCD)
-			if axis:Dot(axis) < 1e-3 then
-				-- these two edges are parallel
-				continue
-			elseif axis:Dot(pointA - pointC) < 0.0 then
-				-- flip
-				axis = -axis
-			end
-
-			-- We remove points whose arcs
-			-- don't collide, as we know it will just
-			-- repeat!!
+			-- The idea is that we only care for edges
+			-- that lie on the minkowski sum of both the hulls.
+			-- We can check this through seeing if the gauss map of
+			-- these edges collide.
 			if not areArcsIntersecting(
+				-dirAB,
+				-dirCD,
 				normalA,
 				normalB,
 				-normalC,
 				-normalD
 			) then
+				-- A and B are not on the minkowski sum
 				continue
+			end
+
+			-- Compute the separating axis
+			local axis = dirAB:Cross(dirCD)
+			if axis:Dot(axis) < 0.005^2 then
+				-- Don't calculate the axis
+				continue
+			elseif axis:Dot(pointA - origin) < 0.0 then
+				-- Assume that we maintain
+				-- consistent normal orientation
+				axis = -axis
 			end
 
 			-- Check the support point of B onto A
 			local direction = axis.Unit
 			local distance = (pointC - pointA):Dot(direction)
-						
-			if bestDistance < distance then
+			if EPSILON < distance then
+				-- Do an early exit
+				return direction, distance,
+					edgeA, edgeB
+			elseif bestDistance < distance then
 				-- Mark our direction and edges
 				bestDirection = direction
 				bestDistance = distance
@@ -256,10 +266,11 @@ function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, n
 			end
 		end
 	end
-
-	assert(bestEdgeA ~= 0, "no edge found for a")
-	assert(bestEdgeB ~= 0, "no edge found for b")
-
+	
+	if bestEdgeA == 0 then
+		return Vector3.zero, -math.huge, 1, 1
+	end
+	
 	return bestDirection, bestDistance,
 		bestEdgeA, bestEdgeB
 end
@@ -278,7 +289,11 @@ function Hull.queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
 		local vertexB = hullB.support(-normal)
 		
 		local distance = (vertexB - vertexA):Dot(normal)
-		if bestDistance < distance then
+		if EPSILON < distance then
+			-- Terminate early because we
+			-- already hit something!
+			return face, distance
+		elseif bestDistance < distance then
 			bestDistance = distance
 			bestFace = i
 		end
@@ -302,7 +317,7 @@ function Hull.update(
 	local faces = self.faces
 	
 	for i, vertex in ref.verticies do
-		-- create our own vertex since it changed
+		-- Create our own vertex since it changed
 		local point = cframe:PointToWorldSpace(vertex * size)
 		centroid += point
 		verticies[i] = point
@@ -310,7 +325,7 @@ function Hull.update(
 
 	local invSize = Vector3.one / size
 	for i, face in ref.faces do
-		-- make a new normal but preserve
+		-- Make a new normal but preserve
 		-- verticies table
 		local normal = cframe:VectorToWorldSpace(face.normal * invSize)
 		faces[i].normal = normal.Unit
@@ -476,17 +491,7 @@ function Hull.fromObj(obj: string): Obj
 		verticies = verticies,
 		edges = edges,
 		faces = faces,
-	})
-end
-
-function Hull.collides(self: Hull, with: Hull): boolean
-	-- Helper function to check if two objects
-	-- collide through GJK
-	return Gjk.isColliding(
-		self.support,
-		with.support,
-		with.center - self.center
-	)
+	}) :: Obj
 end
 
 return Hull

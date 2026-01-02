@@ -1,32 +1,13 @@
 --!native
 --!strict
 
--- Separating axis theorem helper module
--- Used to get proper contact points for our physics engine
-
---[[
-	According to the SAT, if there exists any projection where the two
-	shapes are not colliding, then they do not collide. This should make
-	intuitive sense because if you're below a wall's top, and above a wall's bottom,
-	it does not imply you are colliding with it.
-
-	A covenient thing we can get from the separating axis theorem is that if an object is colliding,
-	then if we get the minimum collision depth from all of the projections, we can find the
-	minimal translation vector.
-
-	With this projection, if it is a face:
-		We can clip the closest face on one shape and clip it along the opposite shape.
-		This operation will give us a contact manifold that we will apply impulses to in the integration
-		step. This contact manifold is just a list of the contact points.
-
-		For stability's sake, we limit the amount of contact points to 4, and we try to maximize area
-		along those four points for a more stable contact manifold 
-
-	If it is an edge:
-		Then we can generate one contact point which is the closest point between both edges
-]]
+-- separating axis theorem helper module
+-- used to get proper contact points for our physics engine
+-- lol
 
 local Hull = require("./Hull")
+
+local EPSILON = 1e-3
 
 export type Support = Hull.Support
 export type Face = Hull.Face
@@ -43,14 +24,14 @@ export type Contact = {
 }
 
 local function cleanupVerticies(inputList: { Vector3 }): { Vector3 }
-	-- Inplace vertex cleanup
+	-- inplace vertex cleanup
 	local hashmap = {} :: { [Vector3]: boolean }
 	local left = 1
 	
 	for i, point in inputList do
-		local hash = (point * 1e3):Floor()
+		local hash = (point * 1e4):Floor()
 		if hashmap[hash] then
-			-- We have a similar vertex!
+			-- we have a similar vertex!
 			continue
 		end
 		
@@ -71,10 +52,10 @@ local function optimizeManifold(
 	normal: Vector3
 ): { Vector3 }
 	if #inputList <= 4 then
-		return cleanupVerticies(inputList)
+		return inputList
 	end
 
-	-- There's more than 4 contact points, so we will have
+	-- there's more than 4 contact points, so we will have
 	-- to find a combination that maximizes area
 	local a = table.remove(inputList) :: Vector3
 	local bi = 0
@@ -95,7 +76,7 @@ local function optimizeManifold(
 
 	assert(bi ~= 0)
 
-	-- Then, find the point which would create 
+	-- then, find the point which would create 
 	-- the largest/smallest triangular area.
 	local b = table.remove(inputList, bi) :: Vector3
 	local maxArea = -math.huge
@@ -104,7 +85,7 @@ local function optimizeManifold(
 		local pa = a - p
 		local pb = b - p
 
-		-- Calculate the area of a triangle, and
+		-- calculate the area of a triangle, and
 		-- check if they are the furthest away from the triangle.
 		local area = pa:Cross(pb):Dot(normal)
 		if maxArea < area then
@@ -123,11 +104,11 @@ local function optimizeManifold(
 	assert(ci ~= 0)
 	assert(di ~= 0)
 
-	return cleanupVerticies({
+	return {
 		a, b,
 		inputList[ci],
 		inputList[di],
-	})
+	}
 end
 
 local function clipHullFaces(
@@ -135,15 +116,15 @@ local function clipHullFaces(
 	hullB: Hull,
 	faceA: Face
 ): { Vector3 }
-	-- Gather the input list
+	-- gather the input list
 	local initialVerts = #faceA.verticies
 	local inputList = table.create(initialVerts) :: { Vector3 }
 	for i, vertex in faceA.verticies do
 		inputList[i] = hullA.verticies[vertex]
 	end
 
-	-- Extension of the sutherland-hodgman algorithm into 3D,
-	-- clipping edges and planes. Assumes the initial verticies
+	-- extension of the sutherland-hodgman algorithm into 3D,
+	-- clipping edges and planes. assumes the initial verticies
 	-- maintain their winding order, which will be maintained
 	-- throughout the algorithm
 	local vertsB = hullB.verticies
@@ -157,9 +138,11 @@ local function clipHullFaces(
 			local k = if j == 1
 				then length
 				else j - 1
-
-			local vj = inputList[j] -- current vertex
-			local vk = inputList[k] -- previous vertex
+			
+			-- current vertex
+			-- previous vertex
+			local vj = inputList[j]
+			local vk = inputList[k]
 
 			-- calculate dot products to check
 			-- which side j and k lie on the plane
@@ -169,7 +152,7 @@ local function clipHullFaces(
 
 			if vjd < w then
 				if w < vkd then
-					-- The previous vertex is infront of the plane, so insert
+					-- the previous vertex is infront of the plane, so insert
 					-- the intersection from the previous to the current plane(cuz IVT.. yk)
 
 					-- dot(vk + (vj-vk)t, normal) = w
@@ -180,10 +163,10 @@ local function clipHullFaces(
 					table.insert(outputList, vk + vjk*t)
 				end
 
-				-- Our current vertex is behind the plane, so add it
+				-- our current vertex is behind the plane, so add it
 				table.insert(outputList, vj)
 			elseif vkd < w then
-				-- The previous vertex was behind the plane, and the current
+				-- the previous vertex was behind the plane, and the current
 				-- vertex is infront of the plane, so insert an intersection point(also cuz IVT)
 
 				-- dot(vk + (vj-vk)t, normal) = w
@@ -201,58 +184,61 @@ local function clipHullFaces(
 	return optimizeManifold(inputList, faceA.normal)
 end
 
-local EPSILON = 1e-3
-
 return function(
 	hullA: Hull,
 	hullB: Hull
 ): Contact?
-	-- The possible separating axes between two convex
+	-- the possible separating axes between two convex
 	-- polyhedra are between: face normals of A and B
 	-- 		edge cross product combinations of A and B
 
 	local faceA, distanceA = hullA:queryFaceDirections(hullB)
 	if EPSILON < distanceA then
-		-- We found a separating axis
+		-- we found a separating axis
 		return nil
 	end
 
 	local faceB, distanceB = hullB:queryFaceDirections(hullA)
 	if EPSILON < distanceB then
-		-- We found a separating axis
+		-- we found a separating axis
 		return nil
 	end
 	
 	local edgeAB, distanceAB, edgeA, edgeB = hullA:queryEdgeDirections(hullB)
 	if EPSILON < distanceAB then
-		-- We found a separating axis
+		-- we found a separating axis
 		return nil
 	end
-
-	-- Check if we have greater separation on the faces, because
-	-- we will prioritize faces over edges for stability
-	if distanceA <= distanceAB or distanceB <= distanceAB then
-		-- use a face contact between A and B
-		local sep = math.max(distanceA, distanceB)
-		local contactA = clipHullFaces(hullA, hullB, faceA)
-		local contactB = clipHullFaces(hullB, hullA, faceB)
-		if #contactA == 0 or #contactB == 0 then
-			return nil
-		end
-
+	
+	if distanceA >= distanceAB and distanceA >= distanceB then
+		-- Face contact with B
+		local contact = clipHullFaces(hullA, hullB, faceA)
 		return {
 			sepA = -distanceA,
 			axisA = faceA.normal,
 
+			sepB = -distanceA,
+			axisB = -faceA.normal,
+
+			contactA = contact,
+			contactB = contact,
+		}
+	elseif distanceB >= distanceAB then
+		-- Face contact with B
+		local contact = clipHullFaces(hullB, hullA, faceB)
+		return {
+			sepA = -distanceB,
+			axisA = -faceB.normal,
+
 			sepB = -distanceB,
 			axisB = faceB.normal,
 
-			contactA = contactA,
-			contactB = contactB,
+			contactA = contact,
+			contactB = contact,
 		}
 	end
-	
-	-- Use an edge contact, there only exists 1 contact point
+
+	-- Edge contact!! There only exists 1 contact point
 	-- and it is the closest point between the two edges
 	local a, b = hullA:queryEdge(edgeA)
 	local c, d = hullB:queryEdge(edgeB)
@@ -281,6 +267,7 @@ return function(
 	
 	local rootA = a + ab * t1
 	local rootB = c + cd * t2
+		
 	return {
 		sepA = distanceAB,
 		axisA = edgeAB,
