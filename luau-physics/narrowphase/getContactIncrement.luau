@@ -1,13 +1,15 @@
 --!strict
 
-local MARGIN_FACTOR = 1
-
-local Hull = require("./Hull")
+local EPSILON = 1e-3
+local GJK_MAX_ITRS = 16
 
 --[[
 	This is the incremental strategy of getting contact manifolds
 	through using a GJK closest point query to get the closest features
 	of two shapes.
+	
+	The tricky part here is to make the GJK numerically stable, 
+	which was very annoying to debug!
 	
 	The main trick is that we have a margin we multiply by beforehand,
 	which allows us to run GJK with some contact depth.
@@ -18,355 +20,382 @@ local Hull = require("./Hull")
 	This algorithm gives us a point at a time, but this can be
 	incredibly helpful for computing the collision depth of smooth convex shapes,
 	and reducing other expensive algorithms(like SAT/EPA) from running constantly.
-
-	Also, this is a big WIP!!!!!
-
-	The strategy is to use this for smooth objects like cylinders and spheres.
-	This is because SAT performs very poorly for smooth shapes!! (plus, it's significantly discretized aswell)
 ]]
 
-export type Support = (direction: Vector3) -> Vector3
-export type FeaturePair = {
-	suppA: Vector3,
-	suppB: Vector3,
+export type Support = (Vector3) -> Vector3
+export type Feature = {
+	pA: Vector3,
+	pB: Vector3,
 	delta: Vector3,
 }
 
-local function tripleProduct(
-	a: Vector3,
-	b: Vector3,
-	c: Vector3
-): Vector3
-	-- (a x b) x c
-	-- -c x (a x b)
-	-- b(c.a) - a(c.b)
-	return b*c:Dot(a) - a*c:Dot(b)
-end
-
-local function area(
-	ax: number, ay: number,
-	bx: number, by: number,
-	cx: number, cy: number
-): number
-	-- ((b - a)x(c - a)).k
-	return (ax - bx) * (by - cy)
-		- (bx - cx) * (ay - by)
+local function tripleProduct(a: Vector3, b: Vector3, c: Vector3): Vector3
+	-- a x (b x c)
+	-- b(a.c) - c(a.b)
+	return b * a:Dot(c) - c * a:Dot(b)
 end
 
 local function saturate(x: number): number
 	-- Helper clamp function
-	return math.clamp(x, -0.0, 1.0)
+	return math.clamp(x, 0.0, 1.0)
+end
+
+local function createFeature(pA: Vector3, pB: Vector3): Feature
+	-- Helper create function
+	return {
+		delta = pA - pB,
+		pA = pA,
+		pB = pB,
+	}
+end
+
+local function siftFromBits(simplex: { Feature }, bits: number)
+	-- Go through the points on the simplex
+	-- and add to the left. Inplace removal
+	local length = #simplex
+	local left = 1
+	for i = 1, length do
+		if bit32.btest(bits, bit32.lshift(1, i - 1)) then
+			simplex[left] = simplex[i]
+			left += 1
+		end
+	end
+
+	for j = left, length do
+		simplex[j] = nil
+	end
+end
+
+local function closestPointOnTriangle(a: Vector3, b: Vector3, c: Vector3)
+	-- https://github.com/embree/embree/blob/master/tutorials/common/math/closest_point.h
+	local ab = b - a
+	local ac = c - a
+	local ap = -a
+
+
+	-- [ab:Dot(ap), ac:Dot(ap), 1
+	--	ab:Dot(bp), ac:Dot(bp), 1
+	--	ab:Dot(cp), ac:Dot(cp), 1]
+
+	-- Check if we are the the voronoi
+	-- region of A
+	local d1 = ab:Dot(ap)
+	local d2 = ac:Dot(ap)
+	if d1 <= 0 and d2 <= 0 then
+		return a
+	end
+
+	-- Check if we are in the voronoi
+	-- region of B
+	local bp = -b
+	local d3 = ab:Dot(bp)
+	local d4 = ac:Dot(bp)
+	if d3 >= 0.0 and d4 <= d3 then
+		return b
+	end
+
+	-- Check if we are in the voronoi
+	-- region of C
+	local cp = -c
+	local d5 = ab:Dot(cp)
+	local d6 = ac:Dot(cp)
+	if d6 >= 0.0 and d5 <= d6 then
+		return c
+	end
+
+	-- Gather I, voronoi of A
+	local vc = d1 * d4 - d3 * d2
+	if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0 then
+		local v = d1 / (d1-d3)
+		return a + v * ab
+	end
+
+	-- Gather J, voronoi of B
+	local vb = d5 * d2 - d1 * d6
+	if vb <= 0.0 and d2 >= 0 and d6 <= 0.0 then
+		local v = d2 / (d2 - d6)
+		return a + v * ac
+	end
+
+	-- Gather K, voronoi of C
+	local va = d3 * d6 - d5 * d4
+	if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0 then
+		local v = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+		return b + v * (c - b)
+	end
+
+	-- Inside of the triangle...
+	local denom = 1 / (va + vb + vc)
+	local v = vb * denom
+	local w = vc * denom
+	return a + v*ab + w*ac
 end
 
 local function cartesian(simplex: { Vector3 }, barycentric: { number })
 	-- Converts barycentric coordinates back to the
 	-- cartesian coordinates
 	local length = #simplex
-	if length == 4 then
-		-- Tetrahedron case
-		return simplex[1] * barycentric[1]
-			+ simplex[2] * barycentric[2]
-			+ simplex[3] * barycentric[3]
-			+ simplex[4] * barycentric[4]
-	elseif length == 3 then
+	if length == 3 then
 		-- Triangle case
 		return simplex[1] * barycentric[1]
 			+ simplex[2] * barycentric[2]
 			+ simplex[3] * barycentric[3]
 	elseif length == 2 then
 		-- Line case
-		local a, b = simplex[1], simplex[2]
-		local ab = b - a
-		return a + ab * barycentric[1]
+		return simplex[1] * barycentric[1]
+			+ simplex[2] * barycentric[2]
 	else
 		-- Point case
 		return simplex[1]
 	end
 end
 
-local function barycentric(
-	simplex: { Vector3 },
-	p: Vector3
-): { number }
+local function barycentric(simplex: { Feature }): { number }
 	local length = #simplex
-	if length == 4 then
-		-- https://www.cdsimpson.net/2014/10/barycentric-coordinates.html
-		local a, b, c, d = simplex[1], simplex[2], simplex[3], simplex[4]
+	if length == 3 then
+		local a, b, c = simplex[1].delta, simplex[2].delta, simplex[3].delta
+
+		local ab = b - a
+		local ac = c - a
+		local bc = c - b
+
+		local d00 = ab:Dot(ab)
+		local d01 = ab:Dot(ac)
+		local d11 = ac:Dot(ac)
+		local d20 = -a:Dot(ab)
+		local d21 = -a:Dot(ac)
+		local d22 = bc:Dot(bc)
+		
+		-- Degeneracy tests
+		local d12 = ac:Dot(bc)
+		if math.abs(d00 * d11 - d01 * d01) < EPSILON
+			or math.abs(d11 * d22 - d12 * d12) < EPSILON
+		then
+			-- One of the edges is degenerate, so
+			-- we just choose the largest edge and return
+			if d11 > d22 and d11 > d00 then
+				-- Edge AC
+				table.remove(simplex, 2)
+				return barycentric(simplex)
+			elseif d22 > d00 and d22 > d11 then
+				-- Edge BC
+				table.remove(simplex, 1)
+				return barycentric(simplex)
+			else
+				-- Edge AB
+				table.remove(simplex, 3)
+				return barycentric(simplex)
+			end
+		end
+		
+		-- From Christer Ericson's Real-Time Collision Detection book
+		local denom = d00 * d11 - d01 * d01
+		local v = (d11 * d20 - d01 * d21) / denom
+		local w = (d00 * d21 - d01 * d20) / denom
+		local u = 1.0 - v - w
+		
+		if u < 0.0 then
+			-- Edge BC
+			local t = saturate(-b:Dot(bc) / bc:Dot(bc))
+			u = 0.0
+			v = 1.0 - t
+			w = t
+		elseif v < 0.0 then
+			-- Edge AC
+			local t = saturate(c:Dot(ac) / ac:Dot(ac))
+			u = t
+			v = 0.0
+			w = 1.0 - t
+		elseif w < 0.0 then
+			-- Edge AB
+			local t = saturate(-ab:Dot(a) / ab:Dot(ab))
+			u = 1.0 - t
+			v = t
+			w = 0.0
+		end
+
+		return { u, v, w }
+	elseif length == 2 then
+		-- Line
+		local a, b = simplex[1].delta, simplex[2].delta
+		local ab = b - a
+
+		local abab = ab:Dot(ab)
+		if abab < EPSILON * EPSILON then
+			-- Line is degenerate
+			if a:Dot(a) < b:Dot(b) then
+				-- A is closer
+				return { 1.0, 0.0 }
+			else
+				-- B is closer
+				return { 0.0, 1.0 }
+			end
+		else
+			local t = saturate(-a:Dot(ab) / ab:Dot(ab))
+			return { 1 - t, t }
+		end
+	else
+		return { }
+	end
+end
+
+local function solveSimplex(simplex: { Feature }): (Vector3, number)
+	local length = #simplex
+	if length == 1 then
+		-- Give back opposite point
+		return simplex[1].delta, 0b1
+	elseif length == 2 then
+		-- Check which part of the line
+		-- the origin lies on
+		local a = simplex[1].delta
+		local b = simplex[2].delta
+		
 		local ao = -a
-		local bo = -b
+		local ab = b - a
+		
+		local abab = ab:Dot(ab)
+		local dot = ab:Dot(ao)
+		
+		if dot <= 0.0 then
+			-- Point A
+			return a, 0b01
+		elseif abab <= dot then
+			-- Point B
+			return b, 0b10
+		else
+			-- Line AB
+			local t = dot / abab
+			return a + ab * t, 0b11
+		end
+	elseif length == 3 then
+		return closestPointOnTriangle(
+			simplex[1].delta,
+			simplex[2].delta,
+			simplex[3].delta
+		), 0b111
+	else
+		-- Check which part of the tetrahedron
+		-- the origin lies on
+		-- tetrahedron case
+		local a = simplex[1].delta
+		local b = simplex[2].delta
+		local c = simplex[3].delta
+		local d = simplex[4].delta
+		
 		local ab = b - a
 		local ac = c - a
 		local ad = d - a
 		local bc = c - b
 		local bd = d - b
-
-		local c1 = bd:Cross(bc)
-		local c2 = ac:Cross(ad)
-		local c3 = ad:Cross(ab)
-		local c4 = ab:Cross(ac)
-		local c5 = ac:Cross(ad)
-
-		local d1 = bo:Dot(c1)
-		local d2 = ao:Dot(c2)
-		local d3 = ao:Dot(c3)
-		local d4 = ao:Dot(c4)
-		local e1 = ab:Dot(c5)
-		local d5 = 1.0 / e1
-		local ux = saturate(d1 * d5) -- bdc
-		local uy = saturate(d2 * d5) -- acd
-		local uz = saturate(d3 * d5) -- adb
-		local uw = saturate(d4 * d5) -- abc
 		
-		return {ux, uy, uz, uw}
+		local abc = ab:Cross(ac)
+		local acd = ac:Cross(ad)
+		local adb = ad:Cross(ab)
+		local bcd = bc:Cross(bd)
 		
-		--local vap = p - a
-		--local vbp = p - b
+		abc *= -math.sign(abc:Dot(ad))
+		acd *= -math.sign(acd:Dot(ab))
+		adb *= -math.sign(adb:Dot(ac))
+		bcd *= math.sign(bcd:Dot(ab))
 		
-		--local vab = b - a
-		--local vac = c - a
-		--local vad = d - a
+		local bestDist = math.huge
+		local bestFlag = 0b0000
+		local bestPt = Vector3.zero
 		
-		--local vbc = c - b
-		--local vbd = d - b
-		
-		--local va = vbp:Dot(vbd:Cross(vbc))
-		--local vb = vap:Dot(vac:Cross(vad))
-		--local vc = vap:Dot(vad:Cross(vab))
-		--local vd = vap:Dot(vab:Cross(vac))
-		
-		--local v = 1.0 / vab:Dot(vac:Cross(vad))
-		
-		--return { va * v, vb * v, vc * v, vd * v }
-	elseif length == 3 then
-		-- http://realtimecollisiondetection.net/
-		local a, b, c = simplex[1], simplex[2], simplex[3]
-
-		local abc = (b - a):Cross(c - a)
-
-		local x = math.abs(abc.X)
-		local y = math.abs(abc.Y)
-		local z = math.abs(abc.Z)
-		
-		local nu = 0.0
-		local nv = 0.0
-		local ood = 0
-		if x >= y and x >= z then
-			-- x largest
-			nu = area(p.Y, p.Z, b.Y, b.Z, c.Y, c.Z)	
-			nv = area(p.Z, p.Y, c.Y, c.Z, a.Y, a.Z)
-			ood = 1 / abc.X
-		elseif y >= x and y >= z then
-			-- y largest
-			nu = area(p.X, p.Z, b.X, b.Z, c.X, c.Z)
-			nv = area(p.X, p.Z, c.X, c.Z, a.X, a.Z)
-			ood = -1 / abc.Y
-		else
-			-- z largest
-			nu = area(p.X, p.Y, b.X, b.Y, c.X, c.Y)
-			nv = area(p.X, p.Y, c.X, c.Y, a.X, a.Y)
-			ood = 1 / abc.Z
+		if 0.0 <= abc:Dot(-a) then
+			bestPt = closestPointOnTriangle(a, b, c)
+			bestFlag = 0b0111
+			bestDist = bestPt:Dot(bestPt)
 		end
-
-		local nx = saturate(nu * ood)
-		local ny = saturate(nv * ood)
-		local nz = 1 - nx - ny
-		return { nx, ny, nz }
 		
-		--local v0 = b - a
-		--local v1 = c - a
-		--local v2 = p - a
+		if 0.0 <= acd:Dot(-a) then
+			local pt = closestPointOnTriangle(a, c, d)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1101
+			end
+		end
 		
-		--local d00 = v0:Dot(v0)
-		--local d01 = v0:Dot(v1)
-		--local d11 = v1:Dot(v1)
-		--local d20 = v2:Dot(v0)
-		--local d21 = v2:Dot(v1)
+		if 0.0 <= adb:Dot(-a) then
+			local pt = closestPointOnTriangle(a, d, b)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1011
+			end
+		end
 		
-		--local denom = 1.0 / (d00 * d11 - d01 * d01)
-		--local v = (d11 * d20 - d01 * d21) * denom
-		--local w = (d00 * d21 - d01 * d20) * denom
+		if 0.0 <= bcd:Dot(-b) then
+			local pt = closestPointOnTriangle(b, c, d)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1110
+			end
+		end
 		
-		--return { 1.0 - v - w, v, w }
-	elseif length == 2 then
-		-- Line
-		local a, b = simplex[1], simplex[2]
-		local ab = b - a
-		local ap = p - a
-		
-		return { saturate(ap:Dot(ab) / ab:Dot(ab)) }
-	else
-		-- Point
-		return { }
+		-- Nothing!
+		return bestPt, bestFlag
 	end
 end
 
-local visa = Instance.new("Part")
-visa.Anchored = true
-visa.Size = Vector3.one
-visa.Parent = workspace
-
-local visb = visa:Clone()
-visb.Parent = workspace
-
 return function(
-	hullA: Hull.Hull,
-	hullB: Hull.Hull
-): (Vector3, Vector3)
-	-- gjk to build incremental contact manifolds
-	-- quickly. just check the final simplex over multiple frames
-	-- and determine if that closest simplex result is good
+	suppA: Support,
+	suppB: Support, 
+	direction: Vector3
+): (Vector3, Vector3, { Feature }, Vector3)
+	-- Flip because closest point queries
+	-- have the direction vector flipped
+	local previousDist = math.huge
+	local simplex: { Feature } = {}
+	local flags = 0
+	local itrs = 0
 	
-	local pA = hullA.center
-	local pB = hullB.center
-	
-	local suppA = hullA.support
-	local suppB = hullB.support
-	
-	local direction = pB - pA
-	local simplex = {} :: { FeaturePair }
-	
-	for i = 1, 8 do
-		local vA = suppA(direction)
-		local vB = suppB(-direction)
+	for i = 1, GJK_MAX_ITRS do
+		local feature = createFeature(suppA(-direction), suppB(direction))
+		table.insert(simplex, feature)
+		itrs = i
 		
-		-- pA * (1.0 - MARGIN_FACTOR) + va * MARGIN_FACTOR
-		local delta = (pA - pB) * (1.0 - MARGIN_FACTOR)
-			+ (vA - vB) * MARGIN_FACTOR
+		direction, flags = solveSimplex(simplex)
 		
-		table.insert(simplex, {
-			suppA = vA,
-			suppB = vB,
-			delta = delta,
-		})
-
-		local length = #simplex
-		if length == 1 then
-			-- point
-			direction = -simplex[1].delta
-		elseif length == 2 then
-			-- line
-			local a = simplex[2].delta
-			local b = simplex[1].delta
-
-			local ab = b - a
-			local ao = -a
-
-			-- an issue might arise with colinear
-			-- points
-			local normal = tripleProduct(ao, ab, ab).Unit
-			direction = math.sign(normal:Dot(ao))
-				* normal
-		elseif length == 3 then
-			-- triangle
-			local a = simplex[3].delta
-			local b = simplex[2].delta
-			local c = simplex[1].delta
-
-			local ab = b - a
-			local ac = c - a
-			local bc = c - b
-			local ao = -a
-
-			local abPerp = tripleProduct(ab, ac, ab).Unit
-			local acPerp = tripleProduct(ab, ac, ac).Unit
-			local bcPerp = tripleProduct(bc, ab, ac).Unit
-
-			if 0.0 < abPerp:Dot(ao) then
-				-- edge ab
-				direction = abPerp
-			elseif 0.0 < acPerp:Dot(ao) then
-				-- edge ac
-				direction = acPerp
-			elseif 0.0 < bcPerp:Dot(ao) then
-				-- edge bc
-				direction = bcPerp
-			else
-				-- expand into a tetrahedron
-				local normal = ab:Cross(ac)
-				if normal:Dot(ao) < 0.0 then
-					direction = -normal
-				else
-					direction = normal
-				end
-			end
-		elseif length == 4 then
-			-- tetrahedron, just simplify this afterwards
-			local a = simplex[1].delta
-			local b = simplex[2].delta
-			local c = simplex[3].delta
-			local d = simplex[4].delta
-
-			local ao = -a
-			local acd = (d - a):Cross(c - a).Unit
-			local abc = (b - a):Cross(c - a).Unit
-			local abd = (b - a):Cross(d - a).Unit
-			local bcd = (d - c):Cross(b - c).Unit
-			
-			acd *= -math.sign(acd:Dot(a))
-			abc *= -math.sign(abc:Dot(a))
-			abd *= -math.sign(abd:Dot(a))
-			bcd *= -math.sign(bcd:Dot(b))
-
-			if 0.0 < abc:Dot(ao) then
-				-- triangle abc
-				table.remove(simplex, 4)
-				direction = abc
-			elseif 0.0 < acd:Dot(ao) then
-				-- triangle acd
-				table.remove(simplex, 2)
-				direction = acd
-			elseif 0.0 < abd:Dot(ao) then
-				-- triangle abd
-				table.remove(simplex, 3)
-				direction = abd
-			elseif 0.0 < bcd:Dot(-b) then
-				-- triangle bcd
-				table.remove(simplex, 1)
-				direction = bcd
-			else
-				-- this means our margin collided!
-				-- so, we have to default using another algorithm
-				-- for this case
-				return Vector3.zero, Vector3.zero
-			end
+		local distanceSquared = direction:Dot(direction) + EPSILON
+		if direction:Dot(direction) < EPSILON then
+			-- Converged through a collision...
+			break
+		elseif previousDist - distanceSquared < EPSILON * previousDist then
+			-- Converged :D
+			break
 		end
+		
+		siftFromBits(simplex, flags)
+		previousDist = distanceSquared
 	end
 	
-	-- Calculate the final simplex
+	-- Cull out bits
+	if direction == Vector3.zero then
+		-- If we intersect the origin, we do not do anything.
+		-- We could pass this onto EPA if we wanted to
+		return Vector3.zero, Vector3.zero, simplex, direction
+	elseif #simplex == 4 then
+		direction, flags = solveSimplex(simplex)
+		siftFromBits(simplex, flags)
+	end
+	
+	-- Generate barycentric coordinates
+	local relative = barycentric(simplex)
 	local simplexA = {}
 	local simplexB = {}
-	local final = {}
-	
 	for i, feature in simplex do
-		table.insert(final, feature.suppA - feature.suppB)
-		table.insert(simplexA, feature.suppA)
-		table.insert(simplexB, feature.suppB)
+		table.insert(simplexA, feature.pA)
+		table.insert(simplexB, feature.pB)
 	end
 	
-	local function draw(simplex: { Vector3 })
-		local length = #simplex
-		for i = 1, length do
-			local j = (i % length) + 1
-			workspace.Wireframe:AddLine(
-				simplex[i],
-				simplex[j]
-			)
-		end
-	end
-	
-	draw(simplexA)
-	draw(simplexB)
-	
-	print(#simplexA, #simplexB)
-	
-	-- https://box2d.org/files/ErinCatto_GJK_GDC2010.pdf
-		
-	local result = barycentric(final, Vector3.zero)	
-	local pointA = cartesian(simplexA, result)
-	local pointB = cartesian(simplexB, result)
-	
-	visa.CFrame = CFrame.new(pointA)
-	visb.CFrame = CFrame.new(pointB)
-	
-	return pointA, pointB
+	return cartesian(simplexA, relative),
+		cartesian(simplexB, relative),
+		simplex,
+		direction
 end

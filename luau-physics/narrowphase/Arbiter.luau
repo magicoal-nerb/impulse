@@ -8,7 +8,6 @@ local getContactManifold = require("./getContactManifold")
 
 local Contact = require("./Contact")
 local Body = require("../Body")
-local Gjk = require("./Gjk")
 local Epa = require("./Epa")
 
 export type Contact = Contact.Contact
@@ -50,7 +49,7 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	-- Add contacts for A->B
 	local originA = shapeA.hull.center
 	local originB = shapeB.hull.center
-
+	
 	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
 	if not manifold then
 		-- If we can't generate a contact manifold, then we

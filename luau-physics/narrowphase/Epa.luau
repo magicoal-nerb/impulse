@@ -14,6 +14,7 @@
 
 type Support = (Vector3) -> (Vector3)
 
+local EPA_MAX_ITRS = 16
 local J = { 2, 3, 1 }
 
 local function encode(a: number, b: number): number
@@ -63,7 +64,7 @@ return function(
 		normals[i] = normal.Unit
 	end
 	
-	for i = 1, 8 do
+	for i = 1, EPA_MAX_ITRS do
 		-- First, we check for the closest triangle
 		-- that encloses this simplex
 		local bestDistance = normals[1]:Dot(simplex[mesh[1][1]])

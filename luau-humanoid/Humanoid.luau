@@ -269,7 +269,7 @@ function Humanoid.computeBalanceForce(self: Humanoid, dt: number): Vector3
 	
 	-- add upwards acceleration
 	local gravity = World.Gravity
-	local deltaAccel = (desiredAccel * 0.1) + gravity	
+	local deltaAccel = (desiredAccel * 0.1)	
 	return Vector3.yAxis * self.mass * deltaAccel
 end
 

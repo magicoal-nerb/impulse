@@ -4,7 +4,6 @@
 local EPSILON = 1e-3
 
 local Support = require("./Support")
-local Gjk = require("./Gjk")
 
 local Hull = {}
 Hull.__index = Hull

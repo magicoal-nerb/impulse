@@ -111,6 +111,17 @@ local function optimizeManifold(
 	}
 end
 
+local function draw(simplex: { Vector3 })
+	local length = #simplex
+	for i = 1, length do
+		local j = (i % length) + 1
+		workspace.Wireframe:AddLine(
+			simplex[i],
+			simplex[j]
+		)
+	end
+end
+
 local function clipHullFaces(
 	hullA: Hull,
 	hullB: Hull,
@@ -212,7 +223,7 @@ return function(
 	
 	if distanceA >= distanceAB and distanceA >= distanceB then
 		-- Face contact with B
-		local contact = clipHullFaces(hullA, hullB, faceA)
+		local contact = clipHullFaces(hullA, hullB, faceA)		
 		return {
 			sepA = -distanceA,
 			axisA = faceA.normal,
@@ -225,7 +236,7 @@ return function(
 		}
 	elseif distanceB >= distanceAB then
 		-- Face contact with B
-		local contact = clipHullFaces(hullB, hullA, faceB)
+		local contact = clipHullFaces(hullB, hullA, faceB)		
 		return {
 			sepA = -distanceB,
 			axisA = -faceB.normal,
@@ -238,7 +249,7 @@ return function(
 		}
 	end
 
-	-- Edge contact!! There only exists 1 contact point
+	-- use an edge contact, there only exists 1 contact point
 	-- and it is the closest point between the two edges
 	local a, b = hullA:queryEdge(edgeA)
 	local c, d = hullB:queryEdge(edgeB)
