@@ -157,14 +157,13 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 	local shapeB = self.shapeB
 	
 	local contact = getContactIncremental(shapeA.hull, shapeB.hull)
-	if not contact or -contact.axisB:Dot(self.normal) < 0.99 then
+	if not contact or math.abs(contact.axisB:Dot(self.normal)) < 0.95 then
 		-- The incremental manifold failed! 
-		-- So, try doing the brute force		
+		-- So, try doing the brute force
 		local bruteForce = getContactManifold(shapeA.hull, shapeB.hull)
 		if not bruteForce then
 			return nil
 		end
-		
 		
 		self.normal = -bruteForce.axisB
 		Arbiter.updateFromManifold(self, bruteForce)

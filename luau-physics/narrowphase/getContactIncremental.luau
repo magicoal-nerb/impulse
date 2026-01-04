@@ -1,8 +1,8 @@
 --!strict
 
 local EPSILON = 1e-3
-local GJK_MAX_ITRS = 16
-local MARGIN = 0.1
+local GJK_MAX_ITRS = 12
+local MARGIN = 0.05
 
 local Hull = require("./Hull")
 
@@ -429,7 +429,6 @@ return function(
 		previousDist = distanceSquared
 	end
 	
-	
 	-- Cull out bits
 	if direction == Vector3.zero then
 		-- If we intersect the origin, we do not do anything.
@@ -442,20 +441,20 @@ return function(
 	end
 
 	-- Generate barycentric coordinates
-	local relative = barycentric(simplex)
-	local simplexA = {}
-	local simplexB = {}
-	for i, feature in simplex do
-		table.insert(simplexA, feature.pA)
-		table.insert(simplexB, feature.pB)
-	end
+	--local relative = barycentric(simplex)
+	--local simplexA = {}
+	--local simplexB = {}
+	--for i, feature in simplex do
+	--	table.insert(simplexA, feature.pA)
+	--	table.insert(simplexB, feature.pB)
+	--end
 
-	local pA = cartesian(simplexA, relative)
-	local pB = cartesian(simplexB, relative)
+	--local pA = cartesian(simplexA, relative)
+	--local pB = cartesian(simplexB, relative)
 	
 	-- Get the closest point on this simplex
-	--local point = solveSimplex(simplex)
-	local point = pA - pB
+	local point = solveSimplex(simplex)
+	--local point = pA - pB
 	local unit = point.Unit
 	local faceA = getFaceInDirection(hullA, -unit)
 	local faceB = getFaceInDirection(hullB, unit)

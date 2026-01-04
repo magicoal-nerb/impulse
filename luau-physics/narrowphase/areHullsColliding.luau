@@ -6,6 +6,8 @@
 	closest point simplexes though.
 ]]
 
+local MAX_GJK_ITRS = 8
+
 export type Support = (direction: Vector3) -> Vector3
 
 local function tripleProduct(
@@ -28,7 +30,7 @@ return function(
 	local length = 1
 	direction *= -1.0
 
-	for i = 1, 8 do
+	for i = 1, MAX_GJK_ITRS do
 		local a = suppA(direction) - suppB(-direction)
 		if a:Dot(direction) <= 0.1 then
 			-- behind the direction, that means that we found
