@@ -20,6 +20,7 @@ export type Body = {
 	flags: number,
 	
 	-- queries
+	smooth: boolean,
 	min: Vector3,
 	max: Vector3,
 	
@@ -112,6 +113,7 @@ function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
 		flags = 0.0,
 
 		-- queries
+		smooth = false,
 		min = min,
 		max = max,
 
@@ -169,6 +171,7 @@ function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
 		flags = 0.0,
 		
 		-- queries
+		smooth = false,
 		min = min,
 		max = max,
 		

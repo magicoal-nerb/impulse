@@ -64,6 +64,10 @@ export type Contact = typeof(setmetatable({} :: {
 	rA: Vector3,
 	rB: Vector3,
 	
+	-- Relative
+	relativeA: Vector3,
+	relativeB: Vector3,
+	
 	-- Jacobians
 	jN: Jacobian,
 	jT: Jacobian,
@@ -83,6 +87,20 @@ export type Jacobian = {
 	effMass: number,
 	totLambda: number,
 }
+
+local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
+	if math.abs(normal.Y) > 0.99 then
+		-- It's up, so just pick the other two
+		-- basis vectors.
+		return Vector3.xAxis, Vector3.zAxis
+	else
+		-- tangent = y x normal
+		-- bitangent = tangent x normal
+		local tangent = Vector3.new(normal.Z, 0, -normal.X)
+		local bitangent = tangent:Cross(normal)
+		return tangent.Unit, bitangent.Unit
+	end
+end
 
 local function solveJacobian(
 	self: Jacobian,
@@ -122,7 +140,24 @@ local function solveJacobian(
 	b.angularVelocity += b.invInertia * self.jwb * lambda
 end
 
-function Jacobian.new(
+local function createJacobian(): Jacobian
+	return {
+		-- state variables
+		flag = 0,
+		jva = Vector3.zero,
+		jwa = Vector3.zero,
+		jvb = Vector3.zero,
+		jwb = Vector3.zero,
+
+		-- warm starting
+		bias = 0.0,
+		totLambda = 0.0,
+		effMass = 0.0,
+	}
+end
+
+local function initJacobian(
+	jacobian: Jacobian,
 	a: Body,
 	b: Body,
 	
@@ -131,7 +166,7 @@ function Jacobian.new(
 	rB: Vector3,
 	flag: number,
 	depth: number
-): Jacobian
+)
 	-- state variables
 	local jva = -normal
 	local jwa = -rA:Cross(normal)
@@ -188,34 +223,41 @@ function Jacobian.new(
 		
 		bias = restitution * projected - 120 * beta * depth
 	end
-	
-	return {		
-		-- state variables
-		flag = flag,
-		jva = jva,
-		jwa = jwa,
-		jvb = jvb,
-		jwb = jwb,
+
+	-- state variables
+	jacobian.flag = flag
+	jacobian.jva = jva
+	jacobian.jwa = jwa
+	jacobian.jvb = jvb
+	jacobian.jwb = jwb
 		
-		-- warm starting
-		bias = bias,
-		totLambda = 0.0,
-		effMass = 1.0 / effMass,
-	}
+	-- warm starting
+	jacobian.bias = bias
+	jacobian.totLambda = 0.0
+	jacobian.effMass = 1.0 / effMass
 end
 
-local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
-	if math.abs(normal.Y) > 0.99 then
-		-- It's up, so just pick the other two
-		-- basis vectors.
-		return Vector3.xAxis, Vector3.zAxis
-	else
-		-- tangent = y x normal
-		-- bitangent = tangent x normal
-		local tangent = Vector3.new(normal.Z, 0, -normal.X)
-		local bitangent = tangent:Cross(normal)
-		return tangent.Unit, bitangent.Unit
-	end
+function Contact.update(
+	self: Contact,
+	rA: Vector3,
+	rB: Vector3,
+	normal: Vector3,
+	depth: number
+)
+	local tangent, bitangent = getOrthogonal(normal)
+	local bodyA = self.bodyA
+	local bodyB = self.bodyB
+	
+	-- Set state
+	self.relativeA = bodyA.cframe:VectorToObjectSpace(rA)
+	self.relativeB = bodyB.cframe:VectorToObjectSpace(rB)
+	self.normal = normal
+	self.rA = rA
+	self.rB = rB
+	
+	initJacobian(self.jB, bodyA, bodyB, bitangent, rA, rB, FLAG_TANGENT, depth)
+	initJacobian(self.jT, bodyA, bodyB, tangent, rA, rB, FLAG_TANGENT, depth)
+	initJacobian(self.jN, bodyA, bodyB, normal, rA, rB, FLAG_NORMAL, depth)
 end
 
 function Contact.new(
@@ -229,7 +271,18 @@ function Contact.new(
 	depth: number
 ): Contact
 	local tangent, bitangent = getOrthogonal(normal)
+	local jN = createJacobian()
+	local jT = createJacobian()
+	local jB = createJacobian()
+	
+	initJacobian(jB, bodyA, bodyB, bitangent, rA, rB, FLAG_TANGENT, depth)
+	initJacobian(jT, bodyA, bodyB, tangent, rA, rB, FLAG_TANGENT, depth)
+	initJacobian(jN, bodyA, bodyB, normal, rA, rB, FLAG_NORMAL, depth)
+	
 	return setmetatable({
+		relativeA = bodyA.cframe:VectorToObjectSpace(rA),
+		relativeB = bodyB.cframe:VectorToObjectSpace(rB),
+		
 		bodyA = bodyA,
 		bodyB = bodyB,
 		
@@ -239,35 +292,9 @@ function Contact.new(
 		rA = rA,
 		rB = rB,
 
-		jN = Jacobian.new(
-			-- state
-			bodyA, bodyB,
-			normal,
-			rA, rB,
-			
-			-- props
-			FLAG_NORMAL, depth
-		),
-		
-		jT = Jacobian.new(
-			-- state
-			bodyA, bodyB,
-			tangent,
-			rA, rB,
-			
-			-- props
-			FLAG_TANGENT, depth
-		),
-		
-		jB = Jacobian.new(
-			-- state
-			bodyA, bodyB,
-			bitangent,
-			rA, rB,
-			
-			-- props
-			FLAG_TANGENT, depth
-		),
+		jN = jN,
+		jB = jB,
+		jT = jT,
 	}, Contact)
 end
 

@@ -10,8 +10,8 @@ local Body = require("./Body")
 
 local FLAG_NO_SLEEP = 1
 
-local SLEEP_THRESHOLD = 1
-local SLEEP_TIMER = 1
+local SLEEP_THRESHOLD = 2
+local SLEEP_TIMER = 0.5
 
 export type Arbiter = Arbiter.Arbiter
 export type Body = Body.Body
@@ -147,7 +147,10 @@ function World.broadphase(dt: number)
 			
 			-- get the arbiter id for contact pair
 			-- matching nice
-			local arbiterId = bit32.lshift(idB, 16) + idA
+			local left = math.min(idA, idB)
+			local right = math.max(idA, idB)
+			
+			local arbiterId = bit32.lshift(left, 16) + right
 			local shapeB = bodies[idB]
 			
 			local maybeArbiter = arbiters[arbiterId]

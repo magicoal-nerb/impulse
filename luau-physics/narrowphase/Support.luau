@@ -86,6 +86,6 @@ return function(part: Part): Support?
 	local partType = part.Shape
 	local shape = PartTypes[partType]
 		or PartTypes[Enum.PartType.Block]
-	
+
 	return shape(part.CFrame, part.Size * 0.5)
 end

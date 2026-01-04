@@ -3,8 +3,9 @@
 
 local EPSILON = 1e-2
 
-local getContactIncrement = require("./getContactIncrement")
+local getContactIncremental = require("./getContactIncremental")
 local getContactManifold = require("./getContactManifold")
+local areHullsColliding = require("./areHullsColliding")
 
 local Contact = require("./Contact")
 local Body = require("../Body")
@@ -16,13 +17,18 @@ export type Body = Body.Body
 local Arbiter = {}
 Arbiter.__index = Arbiter
 
+local function hashvec(vec: Vector3): Vector3
+	return (vec * 1e3):Floor()
+end
+
 export type Arbiter = {
 	shapeA: Body,
 	shapeB: Body,
 
 	rotA: CFrame,
 	rotB: CFrame,
-
+	
+	normal: Vector3,
 	contacts: { [Vector3]: Contact },
 }
 
@@ -50,12 +56,16 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	local originA = shapeA.hull.center
 	local originB = shapeB.hull.center
 	
-	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
-	if not manifold then
-		-- If we can't generate a contact manifold, then we
-		-- are not colliding
+	if not areHullsColliding(
+		shapeA.hull.support,
+		shapeB.hull.support,
+		originB - originA
+	) then
 		return nil
 	end
+	
+	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
+	assert(manifold, "gjk fail?")
 
 	local contacts = {}
 	for i, pointA in manifold.contactA do		
@@ -67,8 +77,8 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 
 		-- We do this for warm starting, I arbritrarily
 		-- chose rA as the hash
-		local id = (rA * 1e3):Floor()
-		contacts[id] = Contact.new(
+		local relative = shapeA.cframe:PointToObjectSpace(pointA)
+		contacts[hashvec(relative)] = Contact.new(
 			shapeA, shapeB,
 			-manifold.axisB, -- normal
 			rA, -- ra
@@ -80,6 +90,8 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	return {
 		shapeA = shapeA,
 		shapeB = shapeB,
+		
+		normal = -manifold.axisB,
 
 		rotA = shapeA.cframe.Rotation:Inverse(),
 		rotB = shapeB.cframe.Rotation:Inverse(),
@@ -88,16 +100,9 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	}
 end
 
-function Arbiter.update(self: Arbiter, dt: number): Arbiter?
+function Arbiter.updateFromManifold(self: Arbiter, manifold: getContactManifold.Contact)
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
-
-	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
-	if not manifold then
-		-- If we can't generate a contact manifold, then we
-		-- are no longer colliding
-		return nil
-	end
 
 	-- add contacts for A->B
 	local originA = shapeA.hull.center
@@ -111,6 +116,19 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 		local rA = pointA - originA
 		local rB = pointB - originB	
 
+		-- We do this for warm starting, I chose rA
+		-- as the hash
+		local relative = shapeA.cframe:PointToObjectSpace(pointA)
+		local id = hashvec(relative)
+		local contact = self.contacts[id]
+		if contact then
+			-- Then, warm start.
+			contact:update(rA, rB, -manifold.axisB, manifold.sepB)
+			contacts[id] = contact
+			continue
+		end
+
+		-- Generate a new contact
 		local contact = Contact.new(
 			shapeA, shapeB,
 			-manifold.axisB, -- normal
@@ -119,21 +137,42 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 			manifold.sepB -- depth
 		)
 
-		-- We do this for warm starting, I chose rA
-		-- as the hash
-		local id = (rA * 1e3):Floor()
-		local closest = self.contacts[id]
-		if closest then
-			-- warm start the lambdas
-			contact.jN.totLambda = closest.jN.totLambda
-			contact.jT.totLambda = closest.jB.totLambda
-			contact.jB.totLambda = closest.jT.totLambda
-		end
-
 		contacts[id] = contact
 	end
 
 	self.contacts = contacts
+end
+
+local function getCenter(a: { Vector3 }): Vector3
+	local center = Vector3.zero
+	for i, p in a do
+		center += p
+	end
+
+	return center / #a
+end
+
+function Arbiter.update(self: Arbiter, dt: number): Arbiter?
+	local shapeA = self.shapeA
+	local shapeB = self.shapeB
+	
+	local contact = getContactIncremental(shapeA.hull, shapeB.hull)
+	if not contact or -contact.axisB:Dot(self.normal) < 0.99 then
+		-- The incremental manifold failed! 
+		-- So, try doing the brute force		
+		local bruteForce = getContactManifold(shapeA.hull, shapeB.hull)
+		if not bruteForce then
+			return nil
+		end
+		
+		
+		self.normal = -bruteForce.axisB
+		Arbiter.updateFromManifold(self, bruteForce)
+	else
+		local center = getCenter(contact.contactA)
+		Arbiter.updateFromManifold(self, contact)
+	end
+	
 	return self
 end
 
