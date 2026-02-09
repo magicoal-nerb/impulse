@@ -3,7 +3,7 @@
 
 local EPSILON = 1e-2
 
-local getContactIncremental = require("./getContactIncremental")
+local getContactStubborn = require("./getContactStubborn")
 local getContactManifold = require("./getContactManifold")
 local areHullsColliding = require("./areHullsColliding")
 
@@ -156,35 +156,19 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
 	
-	local normal, contact = getContactIncremental(shapeA.hull, shapeB.hull, self.normal)
-	if contact then
-		local center = getCenter(contact.contactA)
-		local dot = -contact.axisB:Dot(self.normal)
-		--contact.axisB *= math.sign(dot)
-		
-		--if dot < 0.9 then
-		--	workspace.Wireframe.Color3 = Color3.fromRGB(0, 0, 255)
-		--	workspace.Wireframe:AddLine(center, center + self.normal)
-		--	print("ok why is this difeerent")
-		--end
-		
-		--workspace.Wireframe.Color3 = if dot < 0.9 then Color3.fromRGB(255, 0, 0) else Color3.fromRGB(0,255,0)
-		workspace.Wireframe:AddText(center, string.format("%.3f", dot))
-		workspace.Wireframe:AddLine(center, center + contact.axisB)
-	end
-	
+	local contact = getContactStubborn(shapeA.hull, shapeB.hull, -self.normal)
 	if not contact then
-		-- The incremental manifold failed! 
-		-- So, try doing the brute force
+		-- The face contact failed.
+		-- So, try doing the brute force.
 		local bruteForce = getContactManifold(shapeA.hull, shapeB.hull)
 		if not bruteForce then
 			return nil
 		end
-		
+
 		self.normal = -bruteForce.axisB
 		Arbiter.updateFromManifold(self, bruteForce)
 	else
-		self.normal = normal
+		self.normal = -contact.axisB
 		Arbiter.updateFromManifold(self, contact)
 	end
 	

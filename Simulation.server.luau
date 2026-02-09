@@ -7,7 +7,7 @@
 assert(not workspace.StreamingEnabled, "this simulation script assumes StreamingEnabled = false")
 
 local Pausing = false
-local HZ = 240
+local HZ = 60
 
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -76,12 +76,12 @@ ContextActionService:BindAction(
 			workspace.Wireframe:Clear()
 			
 			local state = CurrentHumanoid.state
-			CurrentHumanoid:update(1 / HZ)
+			CurrentHumanoid:update(2 / HZ)
 			if CurrentHumanoid.state ~= state then
 				RealHumanoid:ChangeState(CurrentHumanoid.state)
 			end
 			
-			World.step(1 / HZ)
+			World.step(2 / HZ)
 		end
 	end,
 	false,
@@ -107,8 +107,13 @@ local function heartbeat(dt: number)
 	
 	-- set state, whatever this is
 	local state = CurrentHumanoid.state
+	RealHumanoid.EvaluateStateMachine = false
+	
 	for i = 1, ticks do
-		CurrentHumanoid:update(1 / HZ)
+		for j = 1, 4 do
+			CurrentHumanoid:update(0.25 / HZ)
+		end
+		
 		if CurrentHumanoid.state ~= state then
 			RealHumanoid:ChangeState(CurrentHumanoid.state)
 		end

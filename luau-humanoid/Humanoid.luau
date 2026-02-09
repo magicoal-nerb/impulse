@@ -8,6 +8,8 @@ local World = LuauPhysics.World
 
 export type RaycastResult = LuauPhysics.RaycastResult
 
+local UPDATE_HZ = 480
+
 local VEC_Y_FLIP = Vector3.new(1, -1, 1)
 local VEC_XZ = Vector3.new(1, 0, 1)
 

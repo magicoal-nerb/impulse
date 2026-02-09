@@ -10,6 +10,7 @@ local Hull = require("./Hull")
 
 local clipHullFaces = require("./clipHullFaces")
 
+local COLLISION_SLOP = 1e-2
 local EPSILON = 1e-3
 
 export type Support = Hull.Support
@@ -213,7 +214,7 @@ return function(
 	
 	if distanceA >= distanceAB and distanceA >= distanceB then
 		-- Face contact with B
-		local contact = clipHullFaces(hullA, hullB, faceA)	
+		local contact = clipHullFaces(hullA, hullB, faceA, COLLISION_SLOP)	
 		debug.profileend()	
 		return {
 			sepA = -distanceA,
@@ -227,7 +228,7 @@ return function(
 		}
 	elseif distanceB >= distanceAB then
 		-- Face contact with B
-		local contact = clipHullFaces(hullB, hullA, faceB)		
+		local contact = clipHullFaces(hullB, hullA, faceB, COLLISION_SLOP)		
 		debug.profileend()
 		return {
 			sepA = -distanceB,

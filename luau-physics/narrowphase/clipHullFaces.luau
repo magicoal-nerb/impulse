@@ -117,7 +117,8 @@ end
 return function(
 	hullA: Hull,
 	hullB: Hull,
-	faceA: Face
+	faceA: Face,
+	clipMargin: number
 ): { Vector3 }
 	-- gather the input list
 	local initialVerts = #faceA.verticies
@@ -133,7 +134,7 @@ return function(
 	local vertsB = hullB.verticies
 	for i, face in hullB.faces do
 		local normal = face.normal
-		local w = vertsB[face.verticies[1]]:Dot(normal) + 1e-2
+		local w = vertsB[face.verticies[1]]:Dot(normal) + clipMargin
 
 		local outputList = {} :: { Vector3 }
 		local length = #inputList
@@ -184,8 +185,5 @@ return function(
 		inputList = outputList
 	end
 
-	local simplex = optimizeManifold(inputList, faceA.normal)
-	draw(simplex)
-	
-	return simplex
+	return optimizeManifold(inputList, faceA.normal)
 end

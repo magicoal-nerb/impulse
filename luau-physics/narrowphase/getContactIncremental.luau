@@ -1,7 +1,8 @@
 --!strict
 
+local COLLISION_SLOP = 1e-2
+local GJK_MAX_ITRS = 12
 local EPSILON = 1e-3
-local GJK_MAX_ITRS = 20
 local MARGIN = 0.05
 
 local Hull = require("./Hull")
@@ -67,7 +68,7 @@ local function createFeature(
 	local unit = direction.Unit * MARGIN * 0.5
 	local vA = pA - unit
 	local vB = pB + unit
-	
+
 	return {
 		delta = vA - vB,
 		pA = vA,
@@ -90,30 +91,6 @@ local function siftFromBits(simplex: { Feature }, bits: number)
 	for j = left, length do
 		simplex[j] = nil
 	end
-end
-
-local function slerp(a: Vector3, b: Vector3, t: number): Vector3
-	local theta = math.acos(math.clamp(a:Dot(b), -0.99, 0.99))
-	if math.abs(theta) < EPSILON then
-		-- Orthogonal case
-		return a * math.cos(t * math.pi * 0.5)
-			+ b * math.sin(t * math.pi * 0.5)
-	end
-	
-	local csc = 1.0 / math.sin(theta)
-	return (a * math.sin(theta * (1.0 - t)) + b * math.sin(theta * t)) * csc
-end
-
-local function closestPointOnPlane(a: Vector3, normal: Vector3): (Vector3, number)
-	-- Gets distance away from plane
-	if normal:Dot(normal) == 0 then
-		return Vector3.zero, math.huge
-	end
-	
-	local unit = normal.Unit
-	local dot = a:Dot(unit)
-	
-	return unit * dot, math.abs(dot)
 end
 
 local function closestPointOnTriangle(a: Vector3, b: Vector3, c: Vector3): (Vector3, number)
@@ -215,7 +192,7 @@ local function barycentric(simplex: { Feature }): { number }
 		local d20 = -a:Dot(ab)
 		local d21 = -a:Dot(ac)
 		local d22 = bc:Dot(bc)
-		
+
 		-- Degeneracy tests
 		local d12 = ac:Dot(bc)
 		if math.abs(d00 * d11 - d01 * d01) < EPSILON
@@ -237,13 +214,13 @@ local function barycentric(simplex: { Feature }): { number }
 				return barycentric(simplex)
 			end
 		end
-		
+
 		-- From Christer Ericson's Real-Time Collision Detection book
 		local denom = d00 * d11 - d01 * d01
 		local v = (d11 * d20 - d01 * d21) / denom
 		local w = (d00 * d21 - d01 * d20) / denom
 		local u = 1.0 - v - w
-		
+
 		if u < 0.0 then
 			-- Edge BC
 			local t = saturate(-b:Dot(bc) / bc:Dot(bc))
@@ -299,13 +276,13 @@ local function solveSimplex(simplex: { Feature }): (Vector3, number)
 		-- the origin lies on
 		local a = simplex[1].delta
 		local b = simplex[2].delta
-		
+
 		local ao = -a
 		local ab = b - a
-		
+
 		local abab = ab:Dot(ab)
 		local dot = ab:Dot(ao)
-		
+
 		if dot <= 0.0 then
 			-- Point A
 			return a, 0b01
@@ -331,51 +308,63 @@ local function solveSimplex(simplex: { Feature }): (Vector3, number)
 		local b = simplex[2].delta
 		local c = simplex[3].delta
 		local d = simplex[4].delta
-		
+
 		local ab = b - a
 		local ac = c - a
 		local ad = d - a
 		local bc = c - b
 		local bd = d - b
-		
+
 		local abc = ab:Cross(ac)
 		local acd = ac:Cross(ad)
 		local adb = ad:Cross(ab)
 		local bcd = bc:Cross(bd)
-		
+
 		abc *= -math.sign(abc:Dot(ad))
 		acd *= -math.sign(acd:Dot(ab))
 		adb *= -math.sign(adb:Dot(ac))
 		bcd *= math.sign(bcd:Dot(ab))
-		
+
 		local bestDist = math.huge
 		local bestFlag = 0b0000
 		local bestPt = Vector3.zero
-		
-		bestPt, bestDist = closestPointOnPlane(a, abc)
-		bestFlag = 0b0111
-		
-		local pt, dot = closestPointOnPlane(a, acd)
-		if dot < bestDist then
-			bestPt = pt
-			bestDist = dot
-			bestFlag = 0b1101
+
+		if 0.0 <= abc:Dot(-a) then
+			bestPt = closestPointOnTriangle(a, b, c)
+			bestFlag = 0b0111
+			bestDist = bestPt:Dot(bestPt)
 		end
-		
-		pt, dot = closestPointOnPlane(a, adb)
-		if dot < bestDist then
-			bestPt = pt
-			bestDist = dot
-			bestFlag = 0b1011
+
+		if 0.0 <= acd:Dot(-a) then
+			local pt = closestPointOnTriangle(a, c, d)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1101
+			end
 		end
-		
-		pt, dot = closestPointOnPlane(b, bcd)
-		if dot < bestDist then
-			bestPt = pt
-			bestDist = dot
-			bestFlag = 0b1110
+
+		if 0.0 <= adb:Dot(-a) then
+			local pt = closestPointOnTriangle(a, d, b)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1011
+			end
 		end
-		
+
+		if 0.0 <= bcd:Dot(-b) then
+			local pt = closestPointOnTriangle(b, c, d)
+			local dot = pt:Dot(pt)
+			if dot < bestDist then
+				bestPt = pt
+				bestDist = dot
+				bestFlag = 0b1110
+			end
+		end
+
 		-- Nothing!
 		return bestPt, bestFlag
 	end
@@ -386,7 +375,7 @@ local function getFaceInDirection(hull: Hull, direction: Vector3): Face
 	-- direction. Works only for convex stuff
 	local bestFace: Face
 	local bestDot = -math.huge
-	
+
 	for i, face in hull.faces do
 		local dot = face.normal:Dot(direction)
 		if bestDot < dot then
@@ -394,41 +383,40 @@ local function getFaceInDirection(hull: Hull, direction: Vector3): Face
 			bestDot = dot
 		end
 	end
-	
+
 	return bestFace
 end
 
 return function(
 	hullA: Hull.Hull,
-	hullB: Hull.Hull,
-	lastNormal: Vector3
-): (Vector3?, Contact?)
+	hullB: Hull.Hull
+): Contact?
 	debug.profilebegin("narrowphase::incremental")
-	
+
 	local suppA = hullA.support
 	local suppB = hullB.support
-	
+
 	local centerA = hullA.center
 	local centerB = hullB.center
-	
+
 	local direction = centerA - centerB
-	
+
 	-- Flip because closest point queries
 	-- have the direction vector flipped
 	local previousDist = math.huge
 	local simplex: { Feature } = {}
 	local flags = 0
-	
+
 	for i = 1, GJK_MAX_ITRS do
 		local feature = createFeature(
 			suppA(-direction), centerA,
 			suppB(direction), centerB,
 			-direction
 		)
-		
+
 		table.insert(simplex, feature)		
 		direction, flags = solveSimplex(simplex)
-		
+
 		local distanceSquared = direction:Dot(direction) + EPSILON
 		if direction:Dot(direction) < EPSILON then
 			-- Converged through a collision...
@@ -437,50 +425,52 @@ return function(
 			-- Converged :D
 			break
 		end
-		
+
 		siftFromBits(simplex, flags)
 		previousDist = distanceSquared
 	end
-	
+
 	-- Cull out bits
 	if direction == Vector3.zero then
 		-- If we intersect the origin, we do not do anything.
 		-- We could pass this onto EPA if we wanted to
 		debug.profileend()
-		return nil, nil
+		return nil
 	elseif #simplex == 4 then
 		direction, flags = solveSimplex(simplex)
 		siftFromBits(simplex, flags)
 	end
 
-	-- Get the closest point on this simplex
-	local closestPoint = solveSimplex(simplex)
-	local faceB = getFaceInDirection(
-		hullB,
-		closestPoint.Unit
-	)
-	
-	local currentNormal = -faceB.normal
-	if currentNormal:Dot(lastNormal) < 0.9 then
-		-- Then just clip based off of the previous normal
-		return nil, nil
-	end
-	
-	local contact = clipHullFaces(hullB, hullA, faceB)
-	local vertexB = suppB(-currentNormal)
-	local vertexA = suppA(currentNormal)
-	
-	workspace.Wireframe:AddLine(vertexA, vertexB)
-	
-	local distance = (vertexA - vertexB):Dot(currentNormal)
-	debug.profileend()
-	
-	return currentNormal, {
-		sepA = distance,
-		axisA = currentNormal,
+	-- Generate barycentric coordinates
+	--local relative = barycentric(simplex)
+	--local simplexA = {}
+	--local simplexB = {}
+	--for i, feature in simplex do
+	--	table.insert(simplexA, feature.pA)
+	--	table.insert(simplexB, feature.pB)
+	--end
 
-		sepB = distance,
-		axisB = -currentNormal,
+	--local pA = cartesian(simplexA, relative)
+	--local pB = cartesian(simplexB, relative)
+
+	-- Get the closest point on this simplex
+	local point = solveSimplex(simplex)
+	--local point = pA - pB
+	local unit = point.Unit
+	local faceA = getFaceInDirection(hullA, -unit)
+	local faceB = getFaceInDirection(hullB, unit)
+
+	local distance = math.abs(point:Dot(faceA.normal))
+
+	local contact = clipHullFaces(hullB, hullA, faceB, COLLISION_SLOP)
+	debug.profileend()
+
+	return {
+		sepA = -distance,
+		axisA = -faceB.normal,
+
+		sepB = -distance,
+		axisB = faceB.normal,
 
 		contactA = contact,
 		contactB = contact,

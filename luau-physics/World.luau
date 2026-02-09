@@ -9,9 +9,9 @@ local BlockHull = Hull.fromObj(require("./shapes/Cube"))
 local Body = require("./Body")
 
 local FLAG_NO_SLEEP = 1
-local MAX_CONTACT_STEPS = 16
+local MAX_CONTACT_STEPS = 4
 
-local SLEEP_THRESHOLD = 2
+local SLEEP_THRESHOLD = 0.5
 local SLEEP_TIMER = 0.5
 
 export type Arbiter = Arbiter.Arbiter
