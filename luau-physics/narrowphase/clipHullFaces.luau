@@ -184,5 +184,8 @@ return function(
 		inputList = outputList
 	end
 
-	return optimizeManifold(inputList, faceA.normal)
+	local simplex = optimizeManifold(inputList, faceA.normal)
+	draw(simplex)
+	
+	return simplex
 end

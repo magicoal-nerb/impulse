@@ -1,7 +1,7 @@
 --!strict
 
 local EPSILON = 1e-3
-local GJK_MAX_ITRS = 12
+local GJK_MAX_ITRS = 20
 local MARGIN = 0.05
 
 local Hull = require("./Hull")
@@ -90,6 +90,30 @@ local function siftFromBits(simplex: { Feature }, bits: number)
 	for j = left, length do
 		simplex[j] = nil
 	end
+end
+
+local function slerp(a: Vector3, b: Vector3, t: number): Vector3
+	local theta = math.acos(math.clamp(a:Dot(b), -0.99, 0.99))
+	if math.abs(theta) < EPSILON then
+		-- Orthogonal case
+		return a * math.cos(t * math.pi * 0.5)
+			+ b * math.sin(t * math.pi * 0.5)
+	end
+	
+	local csc = 1.0 / math.sin(theta)
+	return (a * math.sin(theta * (1.0 - t)) + b * math.sin(theta * t)) * csc
+end
+
+local function closestPointOnPlane(a: Vector3, normal: Vector3): (Vector3, number)
+	-- Gets distance away from plane
+	if normal:Dot(normal) == 0 then
+		return Vector3.zero, math.huge
+	end
+	
+	local unit = normal.Unit
+	local dot = a:Dot(unit)
+	
+	return unit * dot, math.abs(dot)
 end
 
 local function closestPointOnTriangle(a: Vector3, b: Vector3, c: Vector3): (Vector3, number)
@@ -328,40 +352,28 @@ local function solveSimplex(simplex: { Feature }): (Vector3, number)
 		local bestFlag = 0b0000
 		local bestPt = Vector3.zero
 		
-		if 0.0 <= abc:Dot(-a) then
-			bestPt = closestPointOnTriangle(a, b, c)
-			bestFlag = 0b0111
-			bestDist = bestPt:Dot(bestPt)
+		bestPt, bestDist = closestPointOnPlane(a, abc)
+		bestFlag = 0b0111
+		
+		local pt, dot = closestPointOnPlane(a, acd)
+		if dot < bestDist then
+			bestPt = pt
+			bestDist = dot
+			bestFlag = 0b1101
 		end
 		
-		if 0.0 <= acd:Dot(-a) then
-			local pt = closestPointOnTriangle(a, c, d)
-			local dot = pt:Dot(pt)
-			if dot < bestDist then
-				bestPt = pt
-				bestDist = dot
-				bestFlag = 0b1101
-			end
+		pt, dot = closestPointOnPlane(a, adb)
+		if dot < bestDist then
+			bestPt = pt
+			bestDist = dot
+			bestFlag = 0b1011
 		end
 		
-		if 0.0 <= adb:Dot(-a) then
-			local pt = closestPointOnTriangle(a, d, b)
-			local dot = pt:Dot(pt)
-			if dot < bestDist then
-				bestPt = pt
-				bestDist = dot
-				bestFlag = 0b1011
-			end
-		end
-		
-		if 0.0 <= bcd:Dot(-b) then
-			local pt = closestPointOnTriangle(b, c, d)
-			local dot = pt:Dot(pt)
-			if dot < bestDist then
-				bestPt = pt
-				bestDist = dot
-				bestFlag = 0b1110
-			end
+		pt, dot = closestPointOnPlane(b, bcd)
+		if dot < bestDist then
+			bestPt = pt
+			bestDist = dot
+			bestFlag = 0b1110
 		end
 		
 		-- Nothing!
@@ -388,8 +400,9 @@ end
 
 return function(
 	hullA: Hull.Hull,
-	hullB: Hull.Hull
-): Contact?
+	hullB: Hull.Hull,
+	lastNormal: Vector3
+): (Vector3?, Contact?)
 	debug.profilebegin("narrowphase::incremental")
 	
 	local suppA = hullA.support
@@ -434,42 +447,40 @@ return function(
 		-- If we intersect the origin, we do not do anything.
 		-- We could pass this onto EPA if we wanted to
 		debug.profileend()
-		return nil
+		return nil, nil
 	elseif #simplex == 4 then
 		direction, flags = solveSimplex(simplex)
 		siftFromBits(simplex, flags)
 	end
 
-	-- Generate barycentric coordinates
-	--local relative = barycentric(simplex)
-	--local simplexA = {}
-	--local simplexB = {}
-	--for i, feature in simplex do
-	--	table.insert(simplexA, feature.pA)
-	--	table.insert(simplexB, feature.pB)
-	--end
-
-	--local pA = cartesian(simplexA, relative)
-	--local pB = cartesian(simplexB, relative)
-	
 	-- Get the closest point on this simplex
-	local point = solveSimplex(simplex)
-	--local point = pA - pB
-	local unit = point.Unit
-	local faceA = getFaceInDirection(hullA, -unit)
-	local faceB = getFaceInDirection(hullB, unit)
+	local closestPoint = solveSimplex(simplex)
+	local faceB = getFaceInDirection(
+		hullB,
+		closestPoint.Unit
+	)
 	
-	local distance = math.abs(point:Dot(faceA.normal))
+	local currentNormal = -faceB.normal
+	if currentNormal:Dot(lastNormal) < 0.9 then
+		-- Then just clip based off of the previous normal
+		return nil, nil
+	end
 	
 	local contact = clipHullFaces(hullB, hullA, faceB)
+	local vertexB = suppB(-currentNormal)
+	local vertexA = suppA(currentNormal)
+	
+	workspace.Wireframe:AddLine(vertexA, vertexB)
+	
+	local distance = (vertexA - vertexB):Dot(currentNormal)
 	debug.profileend()
 	
-	return {
-		sepA = -distance,
-		axisA = -faceB.normal,
+	return currentNormal, {
+		sepA = distance,
+		axisA = currentNormal,
 
-		sepB = -distance,
-		axisB = faceB.normal,
+		sepB = distance,
+		axisB = -currentNormal,
 
 		contactA = contact,
 		contactB = contact,

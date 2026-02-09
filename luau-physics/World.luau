@@ -9,7 +9,7 @@ local BlockHull = Hull.fromObj(require("./shapes/Cube"))
 local Body = require("./Body")
 
 local FLAG_NO_SLEEP = 1
-local MAX_CONTACT_STEPS = 8
+local MAX_CONTACT_STEPS = 16
 
 local SLEEP_THRESHOLD = 2
 local SLEEP_TIMER = 0.5

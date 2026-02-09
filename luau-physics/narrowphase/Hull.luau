@@ -4,9 +4,19 @@
 local EPSILON = 1e-3
 
 local Support = require("./Support")
+local Mat3 = require("../Mat3")
 
 local Hull = {}
 Hull.__index = Hull
+
+type Mat3 = Mat3.Mat3
+
+-- canonical inertia tensor
+local INERTIA_CANONICAL = Mat3.new(
+	2.0 / 120.0, 1.0 / 120.0, 1.0 / 120.0,
+	1.0 / 120.0, 2.0 / 120.0, 1.0 / 120.0,
+	1.0 / 120.0, 1.0 / 120.0, 2.0 / 120.0
+)
 
 export type Support = Support.Support
 export type Face = {
@@ -23,6 +33,15 @@ export type Obj = {
 
 	-- list of verticies
 	verticies: { Vector3 },
+	
+	-- center of mass
+	centroid: Vector3,
+	
+	-- inertia tensor
+	inertia: Vector3,
+	
+	-- mass
+	mass: number,
 
 	-- edge and normal
 	normals: { [number]: number },
@@ -52,38 +71,102 @@ export type Hull = typeof(setmetatable({} :: {
 
 	-- list of faces, `w` = p.n
 	faces: { Face },	
-	
+
 	-- base shape
 	ref: Obj,
 }, Hull))
+
+
+local function getInertiaTensor(
+	verticies: { Vector3 },
+	faces: { Face },
+	centroid: Vector3,
+	mass: number
+): Vector3
+	local inertia = Mat3.fromVector(Vector3.zero)
+	for i, face in faces do
+		local faceVerts = face.verticies
+		local v1 = verticies[faceVerts[1]] - centroid
+		local v2 = verticies[faceVerts[2]] - centroid
+
+		for j = 3, #faceVerts do
+			local v3 = verticies[faceVerts[j]] - centroid
+
+			-- Create a tetrahedron matrix
+			local tetrahedron = Mat3.fromMatrix(v1, v2, v3)
+			local det = Mat3.det(tetrahedron)
+
+			local covar = Mat3.matMul(tetrahedron, Mat3.matMul(INERTIA_CANONICAL, Mat3.transpose(tetrahedron)))
+			inertia = Mat3.matAdd(inertia, covar)
+
+			-- Make sure that v2 = verts[j - 1]
+			v2 = v3
+		end
+	end
+
+	-- Construct our final inertia tensor
+	return Vector3.new(
+		inertia[1][1] - INERTIA_CANONICAL[1][1],
+		inertia[2][2] - INERTIA_CANONICAL[2][2],
+		inertia[3][3] - INERTIA_CANONICAL[3][3]
+	)
+end
+
+local function getCenterVolume(
+	verticies: { Vector3 },
+	faces: { Face }
+): (Vector3, number)
+	-- First, calculate the center point
+	-- of the entire shape
+	local centroid = Vector3.zero
+	for i, face in faces do
+		local faceVerts = face.verticies
+		local center = Vector3.zero
+
+		for j, vertex in faceVerts do
+			center += verticies[vertex]
+		end
+
+		centroid += center / #faceVerts
+	end
+
+	-- Gathered our centroid!
+	centroid /= #faces
+
+	-- Go through the triangle and
+	-- create a tetrahedron from the center
+	-- and the triangles of our mesh
+	local totCenter = Vector3.zero
+	local totVolume = 0.0
+
+	for i, face in faces do
+		local faceVerts = face.verticies
+		local v1 = verticies[faceVerts[1]]
+		local v2 = verticies[faceVerts[2]]
+
+		for j = 3, #faceVerts do
+			local v3 = verticies[faceVerts[j]]
+
+			-- Get the verticies and then we
+			-- calculate the volume of the tetrahedron
+			local volume = (v1 - centroid):Dot((v2 - centroid):Cross(v3 - centroid))
+			local center = (v1 + v2 + v3 + centroid) * 0.25
+
+			totVolume += volume
+			totCenter += center * volume
+
+			-- Make sure that v2 = verts[j - 1]
+			v2 = v3
+		end
+	end
+
+	return totCenter / totVolume, totVolume / 6.0
+end
 
 local function empty(v: Vector3): Vector3
 	-- Empty support vector for
 	-- optimization purposes
 	return Vector3.zero
-end
-
-local function areArcsIntersecting(
-	bxa: Vector3,
-	dxc: Vector3,
-	
-	a: Vector3,
-	b: Vector3,
-	c: Vector3,
-	d: Vector3
-): boolean
-	-- Checks if the arc spanning a->b and c->d are
-	-- colliding. If it is, then we can test this pair
-	local cba = c:Dot(bxa)
-	local dba = d:Dot(bxa)
-	local adc = a:Dot(dxc)
-	local bdc = b:Dot(dxc)
-	
-	local sameHemisphere = 0.0 < cba * bdc
-	local arcIntersection = cba * dba < 0.0
-		and adc * bdc < 0.0
-	
-	return sameHemisphere and arcIntersection
 end
 
 local function raycastTriangle(
@@ -165,142 +248,10 @@ local function createSupportQuery(verticies: { Vector3 }): Support
 	end
 end
 
-local function queryEdge(
-	verticies: { Vector3 },
-	edge: number
-): (Vector3, Vector3)
-	-- Query edges of the verticies
-	return verticies[bit32.band(edge, 0xFFFF)],
-		verticies[bit32.rshift(edge, 16)]
-end
-
 function Hull.queryEdge(hullA: Hull, edge: number): (Vector3, Vector3)
 	-- Query edges of the verticies
 	return hullA.verticies[bit32.band(edge, 0xFFFF)],
 		hullA.verticies[bit32.rshift(edge, 16)]
-end
-
-local function twin(edge: number): number
-	-- Gets the dual
-	local a = bit32.rshift(edge, 16)
-	local b = bit32.band(edge, 0xFFFF)
-	
-	return bit32.lshift(b, 16) + a
-end
-
-function Hull.queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, number, number)
-	-- Check all possible edge combinations of A and B as potential separating
-	-- axes. Only happens in 3D
-	local facesA = hullA.faces
-	local facesB = hullB.faces
-	
-	local vertsA = hullA.verticies
-	local vertsB = hullB.verticies
-	
-	local normsA = hullA.normals
-	local normsB = hullB.normals
-
-	local bestDirection = Vector3.zero
-	local bestDistance = -math.huge
-	local bestEdgeA = 0
-	local bestEdgeB = 0
-
-	local origin = hullA.center
-	for i, edgeA in hullA.edges do
-		-- get the edge from A
-		local normalB = facesA[normsA[twin(edgeA)]].normal
-		local normalA = facesA[normsA[edgeA]].normal
-		
-		local pointA, pointB = queryEdge(vertsA, edgeA)
-		local dirAB = pointB - pointA
-
-		for j, edgeB in hullB.edges do
-			-- Get the edge from B
-			local normalD = facesB[normsB[twin(edgeB)]].normal
-			local normalC = facesB[normsB[edgeB]].normal
-			
-			local pointC, pointD = queryEdge(vertsB, edgeB)
-			local dirCD = pointD - pointC
-
-			-- The idea is that we only care for edges
-			-- that lie on the minkowski sum of both the hulls.
-			-- We can check this through seeing if the gauss map of
-			-- these edges collide.
-			if not areArcsIntersecting(
-				-dirAB,
-				-dirCD,
-				normalA,
-				normalB,
-				-normalC,
-				-normalD
-			) then
-				-- A and B are not on the minkowski sum
-				continue
-			end
-
-			-- Compute the separating axis
-			local axis = dirAB:Cross(dirCD)
-			if axis:Dot(axis) < 0.005^2 then
-				-- Don't calculate the axis
-				continue
-			elseif axis:Dot(pointA - origin) < 0.0 then
-				-- Assume that we maintain
-				-- consistent normal orientation
-				axis = -axis
-			end
-
-			-- Check the support point of B onto A
-			local direction = axis.Unit
-			local distance = (pointC - pointA):Dot(direction)
-			if EPSILON < distance then
-				-- Do an early exit
-				return direction, distance,
-					edgeA, edgeB
-			elseif bestDistance < distance then
-				-- Mark our direction and edges
-				bestDirection = direction
-				bestDistance = distance
-				bestEdgeA = edgeA
-				bestEdgeB = edgeB
-			end
-		end
-	end
-	
-	if bestEdgeA == 0 then
-		return Vector3.zero, -math.huge, 1, 1
-	end
-	
-	return bestDirection, bestDistance,
-		bestEdgeA, bestEdgeB
-end
-
-function Hull.queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
-	local bestDistance = -math.huge
-	local bestFace = 0
-
-	-- It is known for a convex shape, support(face.normal) lies on
-	-- the current face
-	local vertsA = hullA.verticies	
-	for i, face in hullA.faces do
-		-- query the support point
-		local normal = face.normal
-		local vertexA = vertsA[face.verticies[1]]
-		local vertexB = hullB.support(-normal)
-		
-		local distance = (vertexB - vertexA):Dot(normal)
-		if EPSILON < distance then
-			-- Terminate early because we
-			-- already hit something!
-			return face, distance
-		elseif bestDistance < distance then
-			bestDistance = distance
-			bestFace = i
-		end
-	end
-
-	-- return a record of the current face
-	assert(bestFace ~= 0, "hull had no faces!")
-	return hullA.faces[bestFace], bestDistance
 end
 
 function Hull.update(
@@ -482,10 +433,17 @@ function Hull.fromObj(obj: string): Obj
 		end
 	end
 	
+	local centroid, mass = getCenterVolume(verticies, faces)
+	local inertia = getInertiaTensor(verticies, faces, centroid, mass)
+	
 	return table.freeze({
 		support = createSupportQuery(verticies),
 		center = createCentroid(verticies),
 		normals = edgeNormals,
+		
+		centroid = centroid,
+		inertia = inertia,
+		mass = mass,
 		
 		verticies = verticies,
 		edges = edges,

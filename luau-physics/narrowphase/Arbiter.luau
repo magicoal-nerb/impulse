@@ -63,7 +63,7 @@ function Arbiter.new(shapeA: Body, shapeB: Body): Arbiter?
 	) then
 		return nil
 	end
-	
+		
 	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
 	assert(manifold, "gjk fail?")
 
@@ -156,8 +156,24 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
 	
-	local contact = getContactIncremental(shapeA.hull, shapeB.hull)
-	if not contact or math.abs(contact.axisB:Dot(self.normal)) < 0.95 then
+	local normal, contact = getContactIncremental(shapeA.hull, shapeB.hull, self.normal)
+	if contact then
+		local center = getCenter(contact.contactA)
+		local dot = -contact.axisB:Dot(self.normal)
+		--contact.axisB *= math.sign(dot)
+		
+		--if dot < 0.9 then
+		--	workspace.Wireframe.Color3 = Color3.fromRGB(0, 0, 255)
+		--	workspace.Wireframe:AddLine(center, center + self.normal)
+		--	print("ok why is this difeerent")
+		--end
+		
+		--workspace.Wireframe.Color3 = if dot < 0.9 then Color3.fromRGB(255, 0, 0) else Color3.fromRGB(0,255,0)
+		workspace.Wireframe:AddText(center, string.format("%.3f", dot))
+		workspace.Wireframe:AddLine(center, center + contact.axisB)
+	end
+	
+	if not contact then
 		-- The incremental manifold failed! 
 		-- So, try doing the brute force
 		local bruteForce = getContactManifold(shapeA.hull, shapeB.hull)
@@ -168,7 +184,7 @@ function Arbiter.update(self: Arbiter, dt: number): Arbiter?
 		self.normal = -bruteForce.axisB
 		Arbiter.updateFromManifold(self, bruteForce)
 	else
-		local center = getCenter(contact.contactA)
+		self.normal = normal
 		Arbiter.updateFromManifold(self, contact)
 	end
 	

@@ -177,7 +177,6 @@ return function(
 	-- We will assume this triangle is on the surface
 	-- in order to terminate the algorithm. This may not be
 	-- entirely correct, but we can fix it next tick.
-
 	local normal = normals[bestTriangle]
 	local point = suppA(normal) - suppB(-normal)
 	return -normal, point:Dot(normal)

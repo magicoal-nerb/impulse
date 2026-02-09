@@ -136,17 +136,29 @@ function Mat3.matAdd(self: Mat3, what: Mat3): Mat3
 	return product
 end
 
-function Mat3.inverse(self: Mat3): Mat3
+function Mat3.det(self: Mat3): number
 	-- A^-1
 	local i11 = self[2][2] * self[3][3] - self[2][3] * self[3][2]
 	local i21 = self[2][3] * self[3][1] - self[2][1] * self[3][3]
 	local i31 = self[2][1] * self[3][2] - self[2][2] * self[3][1]
-	
+
+	-- precompute determinant
+	return self[1][1] * i11
+		+ self[1][2] * i21
+		+ self[1][3] * i31
+end
+
+function Mat3.inverse(self: Mat3): Mat3
+	-- A^-1-- A^-1
+	local i11 = self[2][2] * self[3][3] - self[2][3] * self[3][2]
+	local i21 = self[2][3] * self[3][1] - self[2][1] * self[3][3]
+	local i31 = self[2][1] * self[3][2] - self[2][2] * self[3][1]
+
 	-- precompute determinant
 	local det = self[1][1] * i11
 		+ self[1][2] * i21
 		+ self[1][3] * i31
-	
+
 	if math.abs(det) < 1e-3 then
 		error("lol singular matrix")
 	end
@@ -171,6 +183,18 @@ function Mat3.inverse(self: Mat3): Mat3
 	out[3][3] = (self[1][1] * self[2][2] - self[1][2] * self[2][1]) * invDet
 	
 	return setmetatable(out, Mat3)
+end
+
+function Mat3.fromMatrix(
+	a: Vector3,
+	b: Vector3,
+	c: Vector3
+): Mat3
+	return setmetatable({
+		{ a.X, b.X, c.X },
+		{ a.Y, b.Y, c.Y },
+		{ a.Z, b.Z, c.Z },
+	}, Mat3)
 end
 
 function Mat3.new(
