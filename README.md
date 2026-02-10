@@ -33,11 +33,11 @@ rojo serve
 - Future proofing Roblox's Humanoid physics, hopefully to the point where it can be used as a substitute humanoid for obbying or server authorative movement
 
 ## Planned features
-- Adding the EPA algorithm and extracting a potential contact manifold from it
+- Dynamic contact islands
+- Experimenting with block solving contact points under PGS/direct solves if sufficient
 - Other constraints such as hinges, prismatic constraints, etc...
 - Islands that group up other bodies(similar to how Welds work)
 - Incremental manifold building
-- Replication
 
 ## Showcase
 https://github.com/user-attachments/assets/2ed574bd-29b7-4d0d-9e25-926b3e5598dd
