@@ -113,7 +113,7 @@ function Body.newStatic(part: Part, hull: Hull.Hull): Body
 		flags = 0.0,
 
 		-- queries
-		smooth = part.Shape == Enum.PartType.Ball,
+		smooth = part.Shape ~= Enum.PartType.Block,
 		min = min,
 		max = max,
 
@@ -171,7 +171,7 @@ function Body.newDynamic(part: Part, hull: Hull.Hull): Body
 		flags = 0.0,
 		
 		-- queries
-		smooth = part.Shape == Enum.PartType.Ball,
+		smooth = part.Shape ~= Enum.PartType.Block,
 		min = min,
 		max = max,
 		
@@ -201,7 +201,7 @@ function Body.newDynamic(part: Part, hull: Hull.Hull): Body
 		
 		-- surface props
 		restitution = 0.45,
-		friction = 0.4,
+		friction = 0.4 * 2,
 		beta = 0.32,
 	}
 end

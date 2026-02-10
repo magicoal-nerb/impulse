@@ -56,7 +56,7 @@ local function shouldSleep(body: Body): boolean
 end
 
 local function createHullFromPart(part: Part): Hull.Hull
-	if part.Shape == Enum.PartType.Ball then
+	if part.Shape ~= Enum.PartType.Block then
 		-- Create it from the spherical stuff
 		return SupportHull.new(
 			part.Shape,
