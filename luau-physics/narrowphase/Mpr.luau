@@ -32,6 +32,7 @@ end
 export type Support = (direction: Vector3) -> Vector3
 
 return function(
+	origin: Vector3,
 	supp: Support,
 	direction: Vector3
 ): (number, Vector3)
@@ -40,9 +41,9 @@ return function(
 	-- Finds a candidate portal.
 	-- The portal is a triangle, but the
 	-- overall simplex is a tetrahedron.
-	local v1 = supp(-v0)
-	local v2 = supp(v1:Cross(v0))
-	local v3 = supp((v2-v0):Cross(v1-v0))
+	local v1 = supp(-v0) - origin
+	local v2 = supp(v1:Cross(v0)) - origin
+	local v3 = supp((v2-v0):Cross(v1-v0)) - origin
 
 	-- Now, try to find a portal
 	-- whose triangle will collide
@@ -67,7 +68,7 @@ return function(
 				n012 *= -1.0
 			end
 
-			v3 = supp(n012)
+			v3 = supp(n012) - origin
 			if v3:Dot(n012) < 0.0 then
 				return 1, Vector3.zero
 			end
@@ -78,7 +79,7 @@ return function(
 				n023 *= -1.0
 			end
 
-			v1 = supp(n023)
+			v1 = supp(n023) - origin
 			if v1:Dot(n023) < 0.0 then
 				return 1, Vector3.zero
 			end
@@ -89,7 +90,7 @@ return function(
 				n031 *= -1.0
 			end
 
-			v2 = supp(n031)
+			v2 = supp(n031) - origin
 			if v2:Dot(n031) < 0.0 then
 				return 1, Vector3.zero
 			end
@@ -127,7 +128,7 @@ return function(
 			normal *= -1.0
 		end
 
-		local p = supp(normal)
+		local p = supp(normal) - origin
 		if v1:Dot(normal) > (p:Dot(normal) + 1e-3) then
 			break
 		elseif math.abs((p - v1):Dot(normal)) < 1e-3 then

@@ -96,7 +96,13 @@ function SupportHull.raycast(
 	origin: Vector3,
 	direction: Vector3
 ): (number, Vector3, Vector3)
-	return 1.0, origin + direction, Vector3.zAxis
+	local hitT, hitNormal = Mpr(
+		origin,
+		self.support,
+		direction
+	)
+	
+	return hitT, origin + direction * hitT, hitNormal
 end
 
 return SupportHull

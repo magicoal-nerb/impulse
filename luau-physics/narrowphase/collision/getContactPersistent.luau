@@ -27,7 +27,7 @@ export type Contact = {
 	contactB: { Vector3 },
 }
 
-local function getFaceInDirection(hull: Hull, direction: Vector3): Face
+local function getFaceInDirection(hull: Hull.MeshHull, direction: Vector3): Face
 	-- Gets a face pointing most in the specified
 	-- direction. Works only for convex stuff
 	local bestFace: Face
@@ -56,8 +56,8 @@ local function draw(simplex: { Vector3 })
 end
 
 return function(
-	hullA: Hull.Hull,
-	hullB: Hull.Hull,
+	hullA: Hull.MeshHull,
+	hullB: Hull.MeshHull,
 	lastNormal: Vector3
 ): Contact?
 	debug.profilebegin("narrowphase::stubborn")
@@ -73,17 +73,17 @@ return function(
 	--	hullB.verticies[faceB.verticies[4]]
 	--})
 	
-	local distance = (vertexB - vertexA):Dot(lastNormal)
-	local contact = clipHullFaces(hullB, hullA, faceB, 0.1)
+	local distance = (vertexB - vertexA):Dot(faceB.normal)
+	local contact = clipHullFaces(hullB, hullA, faceB, 1e-2)
 
 	debug.profileend()
 	
-	if -0.1 > distance then
+	if -MARGIN > distance then
 		return nil
 	elseif 1 < #contact then
 		return {
 			sep = distance,
-			axis = lastNormal,
+			axis = faceB.normal,
 
 			contactA = contact,
 			contactB = contact,

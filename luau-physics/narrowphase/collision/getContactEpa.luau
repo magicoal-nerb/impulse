@@ -50,8 +50,8 @@ end
 
 return function(
 	simplex: { Feature },
-	hullA: Hull.Hull,
-	hullB: Hull.Hull
+	hullA: Hull.SupportHull,
+	hullB: Hull.SupportHull
 ): Contact?
 	local suppA = hullA.support
 	local suppB = hullB.support

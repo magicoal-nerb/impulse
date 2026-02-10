@@ -8,8 +8,6 @@ export type Hull = {
 	new: (...any) -> Hull,
 	update: (Hull, CFrame, Vector3) -> (),
 	raycast: (Hull, number, Vector3, Vector3) -> (),
-
-	support: Support,
 }
 
 export type Support = SupportHull.Support

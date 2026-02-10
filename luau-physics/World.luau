@@ -256,9 +256,13 @@ function World.shapecast(
 	) do
 		local hitObject = bodies[hitId]
 		local support = hitObject.hull.support
-		local hitT, hitNormal = Mpr(function(direction: Vector3)
-			return support(direction) - shape(direction)
-		end, direction)
+		local hitT, hitNormal = Mpr(
+			Vector3.zero,
+			function(direction: Vector3)
+				return support(direction) - shape(direction)
+			end,
+			direction
+		)
 
 		if hitT < t then
 			-- this is the closest object that we have
