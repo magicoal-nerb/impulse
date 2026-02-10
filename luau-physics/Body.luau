@@ -94,7 +94,7 @@ local function getExtentsSize(cframe: CFrame, size: Vector3): (Vector3, Vector3)
 end
 
 local CF_ZERO = CFrame.new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
+function Body.newStatic(part: Part, hull: Hull.Hull): Body
 	-- if we're anchored, then we have infinite mass
 	-- so we cannot apply linear velocity or angular velocity
 	-- at all to this
@@ -106,14 +106,14 @@ function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
 	return {
 		-- body
 		part = part,
-		hull = Hull.new(shape, cframe, size),
+		hull = hull,
 		
 		-- sleep
 		sleep = 0.0,
 		flags = 0.0,
 
 		-- queries
-		smooth = false,
+		smooth = part.Shape == Enum.PartType.Ball,
 		min = min,
 		max = max,
 
@@ -148,7 +148,7 @@ function Body.newStatic(part: BasePart, shape: Hull.Obj): Body
 	}
 end
 
-function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
+function Body.newDynamic(part: Part, hull: Hull.Hull): Body
 	-- if we're anchored, then we have infinite mass
 	-- so we cannot apply linear velocity or angular velocity
 	-- at all to this
@@ -164,14 +164,14 @@ function Body.newDynamic(part: BasePart, shape: Hull.Obj): Body
 	return {
 		-- body
 		part = part,
-		hull = Hull.new(shape, cframe, size),
+		hull = hull,
 
 		-- sleep
 		sleep = 0.0,
 		flags = 0.0,
 		
 		-- queries
-		smooth = false,
+		smooth = part.Shape == Enum.PartType.Ball,
 		min = min,
 		max = max,
 		

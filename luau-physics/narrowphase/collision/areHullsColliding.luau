@@ -1,9 +1,12 @@
+--!native
 --!strict
 
 --[[
 	This uses Casey's GJK shortcut which is optimized
 	for yes/no intersection tests. This gives pretty poor
 	closest point simplexes though.
+	
+	Works on both types of hulls.
 ]]
 
 local MAX_GJK_ITRS = 8

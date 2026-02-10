@@ -9,11 +9,11 @@
 	who maximize the area of the contact manifold. This is to improve stability
 ]]
 
-local Hull = require("./Hull")
+local Hull = require("../Hull")
 
+export type MeshHull = Hull.MeshHull
 export type Support = Hull.Support
 export type Face = Hull.Face
-export type Hull = Hull.Hull
 
 local function draw(simplex: { Vector3 })
 	local length = #simplex
@@ -115,8 +115,8 @@ local function optimizeManifold(
 end
 
 return function(
-	hullA: Hull,
-	hullB: Hull,
+	hullA: MeshHull,
+	hullB: MeshHull,
 	faceA: Face,
 	clipMargin: number
 ): { Vector3 }

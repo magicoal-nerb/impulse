@@ -1,7 +1,27 @@
 --!native
 --!strict
 
-export type Support = (vec: Vector3) -> Vector3
+--[[
+	Hull that uses support points instead of mesh
+	stuff. Uses EPA/GJK internally.
+	
+	TODO: adapt the inertia tensor and volume calculations
+	algorithms through support points! Could possibly sample
+	the convex hull of the support points, then construct from there.
+]]
+
+local Mpr = require("../Mpr")
+
+export type Support = (Vector3) -> Vector3
+
+local SupportHull = {}
+SupportHull.__index = SupportHull
+
+export type SupportHull = typeof(setmetatable({} :: {
+	ref: (CFrame, Vector3) -> (Support),
+	center: Vector3,
+	support: Support,
+}, SupportHull))
 
 local function rayPlane(p: Vector3, v: Vector3, s: Vector3, n: Vector3)
 	local r = p - s;
@@ -45,47 +65,38 @@ local function createCylinderSupport(cframe: CFrame, halfSize: Vector3)
 	end
 end
 
-local function createConvexSupport(
-	cframe: CFrame,
-	halfSize: Vector3,
-	verticies: { Vector3 }
-): Support
-	-- this creates a mini support object
-	-- for our given object. we don't pass over
-	-- the part so we don't spam indexes
-	local supports = table.create(#verticies) :: { Vector3 }
-	for i, vertex in verticies do
-		local localPoint = vertex * halfSize
-		supports[i] = cframe:PointToWorldSpace(localPoint)
-	end
-
-	return function(vec: Vector3): Vector3
-		local bestDot = -math.huge
-		local bestItr = 0
-
-		for i, point in supports do
-			local dot = point:Dot(vec)
-			if bestDot < dot then
-				bestDot = dot
-				bestItr = i
-			end
-		end
-
-		return supports[bestItr]
-	end
-end
-
 local PartTypes = table.freeze({
 	[Enum.PartType.Ball] = createBallSupport,
-	[Enum.PartType.Block] = createBlockSupport,
 	[Enum.PartType.Cylinder] = createCylinderSupport,
 })
 
-return function(part: Part): Support?
-	-- only support shape thus far is a cube
-	local partType = part.Shape
-	local shape = PartTypes[partType]
-		or PartTypes[Enum.PartType.Block]
-
-	return shape(part.CFrame, part.Size * 0.5)
+function SupportHull.new(
+	partType: Enum.PartType,
+	cframe: CFrame,
+	size: Vector3
+): SupportHull
+	return setmetatable({
+		support = PartTypes[partType](cframe, size * 0.5),
+		center = cframe.Position,
+		ref = PartTypes[partType],
+	}, SupportHull)
 end
+
+function SupportHull.update(
+	self: SupportHull,
+	cframe: CFrame,
+	size: Vector3
+)
+	self.support = self.ref(cframe, size * 0.5)
+	self.center = cframe.Position
+end
+
+function SupportHull.raycast(
+	self: SupportHull,
+	origin: Vector3,
+	direction: Vector3
+): (number, Vector3, Vector3)
+	return 1.0, origin + direction, Vector3.zAxis
+end
+
+return SupportHull

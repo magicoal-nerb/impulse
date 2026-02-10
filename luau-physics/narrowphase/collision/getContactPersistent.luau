@@ -4,7 +4,7 @@ local EPSILON = 1e-3
 local GJK_MAX_ITRS = 20
 local MARGIN = 0.05
 
-local Hull = require("./Hull")
+local Hull = require("../Hull")
 
 local clipHullFaces = require("./clipHullFaces")
 
@@ -19,17 +19,9 @@ export type Hull = Hull.Hull
 export type Face = Hull.Face
 export type Support = Hull.Support
 
-export type Feature = {
-	pA: Vector3,
-	pB: Vector3,
-	delta: Vector3,
-}
-
 export type Contact = {
-	sepA: number,
-	sepB: number,
-	axisA: Vector3,
-	axisB: Vector3,
+	sep: number,
+	axis: Vector3,
 
 	contactA: { Vector3 },
 	contactB: { Vector3 },
@@ -82,19 +74,16 @@ return function(
 	--})
 	
 	local distance = (vertexB - vertexA):Dot(lastNormal)
-	local contact = clipHullFaces(hullB, hullA, faceB, 0.05)
+	local contact = clipHullFaces(hullB, hullA, faceB, 0.1)
 
 	debug.profileend()
 	
-	if -0.05 > distance then
+	if -0.1 > distance then
 		return nil
 	elseif 1 < #contact then
 		return {
-			sepA = distance,
-			axisA = lastNormal,
-
-			sepB = distance,
-			axisB = lastNormal,
+			sep = distance,
+			axis = lastNormal,
 
 			contactA = contact,
 			contactB = contact,

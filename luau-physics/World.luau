@@ -5,7 +5,10 @@ local Hull = require("./narrowphase/Hull")
 local Mpr = require("./narrowphase/Mpr")
 local Bvh = require("./broadphase/Bvh")
 
-local BlockHull = Hull.fromObj(require("./shapes/Cube"))
+local SupportHull = Hull.SupportHull
+local MeshHull = Hull.MeshHull
+
+local BlockHull = MeshHull.fromObj(require("./shapes/Cube"))
 local Body = require("./Body")
 
 local FLAG_NO_SLEEP = 1
@@ -30,8 +33,8 @@ export type World = {
 	Gravity: number,
 	
 	numActive: number,
-	arbiters: { [number]: Arbiter },
-	active: { [number]: boolean },
+	arbiters: { Arbiter },
+	active: { boolean },
 	bodies: { Body },
 	bvh: Bvh,
 }
@@ -40,17 +43,9 @@ local World = {}
 World.Gravity = 196.2
 World.numActive = 0
 World.bvh = Bvh.new() :: Bvh
-World.bodies = {}
-World.active = {}
-World.arbiters = {}
-
-local function getShape(part: BasePart): Hull.Obj
-	-- current shape right now is a block, but you can do other stuff
-	-- like wedges tris, etc. however, the biggest limitation are smooth
-	-- objects(because i didn't add incremental manifolds yet and clipping is
-	-- horribly inefficient for smooth shapes)
-	return BlockHull
-end
+World.bodies = {} :: { Body }
+World.active = {} :: { boolean }
+World.arbiters = {} :: { Arbiter }
 
 local function shouldSleep(body: Body): boolean
 	-- checks if the linear velocity isnt much
@@ -60,9 +55,31 @@ local function shouldSleep(body: Body): boolean
 		and angular:Dot(angular) < SLEEP_THRESHOLD * SLEEP_THRESHOLD
 end
 
-function World.addDynamicBody(part: BasePart): Body
+local function createHullFromPart(part: Part): Hull.Hull
+	if part.Shape == Enum.PartType.Ball then
+		-- Create it from the spherical stuff
+		return SupportHull.new(
+			part.Shape,
+			part.CFrame,
+			part.Size
+		) :: Hull.Hull
+	else
+		-- Create it from the block hull
+		return MeshHull.new(
+			BlockHull,
+			part.CFrame,
+			part.Size
+		) :: Hull.Hull
+	end
+end
+
+function World.addDynamicBody(part: Part): Body
 	-- adds a dynamic body to the bvh
-	local body = Body.newDynamic(part, getShape(part))
+	local body = Body.newDynamic(
+		part,
+		createHullFromPart(part)
+	)
+	
 	local id = World.bvh:insert(World.bvh.createNode(body))
 	World.bodies[id] = body
 	World.active[id] = true
@@ -70,9 +87,13 @@ function World.addDynamicBody(part: BasePart): Body
 	return body
 end
 
-function World.addStaticBody(part: BasePart): Body
+function World.addStaticBody(part: Part): Body
 	-- adds a static body to the bvh
-	local body = Body.newStatic(part, getShape(part))	
+	local body = Body.newStatic(
+		part,
+		createHullFromPart(part)
+	)	
+	
 	local id = World.bvh:insert(World.bvh.createNode(body))
 	World.bodies[id] = body
 	
@@ -112,7 +133,6 @@ function World.sleepBody(id: number, dt: number)
 	end
 end
 
-local updateArbiter = Arbiter.update
 local getExtentsSize = Body.getExtentsSize
 local padding = Vector3.one
 function World.broadphase(dt: number)
@@ -124,7 +144,7 @@ function World.broadphase(dt: number)
 	debug.profilebegin("world::broadphase")
 	
 	-- create new arbiters list
-	local newArbiters = {}
+	local newArbiters = {} :: { Arbiter }
 	for idA in World.active do
 		local shapeA = bodies[idA]
 		if shouldSleep(shapeA) then
@@ -155,14 +175,14 @@ function World.broadphase(dt: number)
 			local shapeB = bodies[idB]
 			
 			local maybeArbiter = arbiters[arbiterId]
-			local arbiter
+			local arbiter: Arbiter?
 			if maybeArbiter then
 				-- we can exploit warm starting because
 				-- we already have an existing contact here
-				arbiter = updateArbiter(maybeArbiter, dt)
+				arbiter = maybeArbiter:update(dt)
 			else
 				-- otherwise just create a new arbiter
-				arbiter = Arbiter.new(shapeA, shapeB)
+				arbiter = Arbiter(shapeA, shapeB)
 			end
 			
 			if not arbiter then
@@ -190,14 +210,13 @@ function World.integrateForces(dt: number)
 	end
 end
 
-local solveArbiter = Arbiter.solve
 function World.integrateConstraints(dt: number)
 	-- integrates constraints such as contact constraints(for now)
 	debug.profilebegin("world::integrate_constraints")
 	
 	for i = 1, MAX_CONTACT_STEPS do
 		for id, arbiter in World.arbiters do
-			solveArbiter(arbiter, dt)
+			arbiter:solve(dt)
 		end
 	end
 	

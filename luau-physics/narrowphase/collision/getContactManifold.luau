@@ -6,22 +6,20 @@
 	different shapes by using the separating axis theorem.
 ]]
 
-local Hull = require("./Hull")
+local Hull = require("../Hull")
 
 local clipHullFaces = require("./clipHullFaces")
 
 local COLLISION_SLOP = 1e-2
 local EPSILON = 1e-3
 
+export type MeshHull = Hull.MeshHull
 export type Support = Hull.Support
 export type Face = Hull.Face
-export type Hull = Hull.Hull
 
 export type Contact = {
-	sepA: number,
-	sepB: number,
-	axisA: Vector3,
-	axisB: Vector3,
+	sep: number,
+	axis: Vector3,
 	
 	contactA: { Vector3 },
 	contactB: { Vector3 },
@@ -67,7 +65,7 @@ local function areArcsIntersecting(
 	return sameHemisphere and arcIntersection
 end
 
-local function queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, number, number)
+local function queryEdgeDirections(hullA: MeshHull, hullB: MeshHull): (Vector3, number, number, number)
 	-- Check all possible edge combinations of A and B as potential separating
 	-- axes. Only happens in 3D
 	local facesA = hullA.faces
@@ -153,7 +151,7 @@ local function queryEdgeDirections(hullA: Hull, hullB: Hull): (Vector3, number, 
 		bestEdgeA, bestEdgeB
 end
 
-local function queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
+local function queryFaceDirections(hullA: MeshHull, hullB: MeshHull): (Face, number)
 	local bestDistance = -math.huge
 	local bestFace = 0
 
@@ -183,8 +181,8 @@ local function queryFaceDirections(hullA: Hull, hullB: Hull): (Face, number)
 end
 
 return function(
-	hullA: Hull,
-	hullB: Hull
+	hullA: MeshHull,
+	hullB: MeshHull
 ): Contact?
 	-- the possible separating axes between two convex
 	-- polyhedra are between: face normals of A and B
@@ -217,11 +215,8 @@ return function(
 		local contact = clipHullFaces(hullA, hullB, faceA, COLLISION_SLOP)	
 		debug.profileend()	
 		return {
-			sepA = -distanceA,
-			axisA = faceA.normal,
-
-			sepB = -distanceA,
-			axisB = -faceA.normal,
+			sep = -distanceA,
+			axis = -faceA.normal,
 
 			contactA = contact,
 			contactB = contact,
@@ -231,11 +226,8 @@ return function(
 		local contact = clipHullFaces(hullB, hullA, faceB, COLLISION_SLOP)		
 		debug.profileend()
 		return {
-			sepA = -distanceB,
-			axisA = -faceB.normal,
-
-			sepB = -distanceB,
-			axisB = faceB.normal,
+			sep = -distanceB,
+			axis = faceB.normal,
 
 			contactA = contact,
 			contactB = contact,
@@ -274,10 +266,8 @@ return function(
 
 	debug.profileend()
 	return {
-		sepA = distanceAB,
-		axisA = edgeAB,
-		sepB = -distanceAB,
-		axisB = -edgeAB,
+		sep = -distanceAB,
+		axis = -edgeAB,
 		contactA = { rootA },
 		contactB = { rootB },
 	}

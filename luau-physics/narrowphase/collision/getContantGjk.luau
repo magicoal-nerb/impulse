@@ -1,13 +1,14 @@
 --!strict
 
 local COLLISION_SLOP = 1e-2
-local GJK_MAX_ITRS = 12
+local GJK_MAX_ITRS = 32
 local EPSILON = 1e-3
-local MARGIN = 0.05
+local MARGIN = 0.1
 
-local Hull = require("./Hull")
+local Hull = require("../Hull")
 
-local clipHullFaces = require("./clipHullFaces")
+local extractCoordinates = require("./extractCoordinates")
+local getContactEpa = require("./getContactEpa")
 
 --[[
 	This is the incremental strategy of getting contact manifolds
@@ -28,21 +29,18 @@ local clipHullFaces = require("./clipHullFaces")
 	and reducing other expensive algorithms(like SAT/EPA) from running constantly.
 ]]
 
+export type Support = Hull.Support
 export type Hull = Hull.Hull
 export type Face = Hull.Face
-export type Support = Hull.Support
 
-export type Feature = {
-	pA: Vector3,
-	pB: Vector3,
-	delta: Vector3,
-}
+type Feature = extractCoordinates.Feature
+
+local barycentric = extractCoordinates.barycentric
+local cartesian = extractCoordinates.cartesian
 
 export type Contact = {
-	sepA: number,
-	sepB: number,
-	axisA: Vector3,
-	axisB: Vector3,
+	sep: number,
+	axis: Vector3,
 
 	contactA: { Vector3 },
 	contactB: { Vector3 },
@@ -52,11 +50,6 @@ local function tripleProduct(a: Vector3, b: Vector3, c: Vector3): Vector3
 	-- a x (b x c)
 	-- b(a.c) - c(a.b)
 	return b * a:Dot(c) - c * a:Dot(b)
-end
-
-local function saturate(x: number): number
-	-- Helper clamp function
-	return math.clamp(x, 0.0, 1.0)
 end
 
 local function createFeature(
@@ -156,114 +149,6 @@ local function closestPointOnTriangle(a: Vector3, b: Vector3, c: Vector3): (Vect
 	local v = vb * denom
 	local w = vc * denom
 	return a + v*ab + w*ac, 0b111
-end
-
-local function cartesian(simplex: { Vector3 }, barycentric: { number })
-	-- Converts barycentric coordinates back to the
-	-- cartesian coordinates
-	local length = #simplex
-	if length == 3 then
-		-- Triangle case
-		return simplex[1] * barycentric[1]
-			+ simplex[2] * barycentric[2]
-			+ simplex[3] * barycentric[3]
-	elseif length == 2 then
-		-- Line case
-		return simplex[1] * barycentric[1]
-			+ simplex[2] * barycentric[2]
-	else
-		-- Point case
-		return simplex[1]
-	end
-end
-
-local function barycentric(simplex: { Feature }): { number }
-	local length = #simplex
-	if length == 3 then
-		local a, b, c = simplex[1].delta, simplex[2].delta, simplex[3].delta
-
-		local ab = b - a
-		local ac = c - a
-		local bc = c - b
-
-		local d00 = ab:Dot(ab)
-		local d01 = ab:Dot(ac)
-		local d11 = ac:Dot(ac)
-		local d20 = -a:Dot(ab)
-		local d21 = -a:Dot(ac)
-		local d22 = bc:Dot(bc)
-
-		-- Degeneracy tests
-		local d12 = ac:Dot(bc)
-		if math.abs(d00 * d11 - d01 * d01) < EPSILON
-			or math.abs(d11 * d22 - d12 * d12) < EPSILON
-		then
-			-- One of the edges is degenerate, so
-			-- we just choose the largest edge and return
-			if d11 > d22 and d11 > d00 then
-				-- Edge AC
-				table.remove(simplex, 2)
-				return barycentric(simplex)
-			elseif d22 > d00 and d22 > d11 then
-				-- Edge BC
-				table.remove(simplex, 1)
-				return barycentric(simplex)
-			else
-				-- Edge AB
-				table.remove(simplex, 3)
-				return barycentric(simplex)
-			end
-		end
-
-		-- From Christer Ericson's Real-Time Collision Detection book
-		local denom = d00 * d11 - d01 * d01
-		local v = (d11 * d20 - d01 * d21) / denom
-		local w = (d00 * d21 - d01 * d20) / denom
-		local u = 1.0 - v - w
-
-		if u < 0.0 then
-			-- Edge BC
-			local t = saturate(-b:Dot(bc) / bc:Dot(bc))
-			u = 0.0
-			v = 1.0 - t
-			w = t
-		elseif v < 0.0 then
-			-- Edge AC
-			local t = saturate(c:Dot(ac) / ac:Dot(ac))
-			u = t
-			v = 0.0
-			w = 1.0 - t
-		elseif w < 0.0 then
-			-- Edge AB
-			local t = saturate(-ab:Dot(a) / ab:Dot(ab))
-			u = 1.0 - t
-			v = t
-			w = 0.0
-		end
-
-		return { u, v, w }
-	elseif length == 2 then
-		-- Line
-		local a, b = simplex[1].delta, simplex[2].delta
-		local ab = b - a
-
-		local abab = ab:Dot(ab)
-		if abab < EPSILON * EPSILON then
-			-- Line is degenerate
-			if a:Dot(a) < b:Dot(b) then
-				-- A is closer
-				return { 1.0, 0.0 }
-			else
-				-- B is closer
-				return { 0.0, 1.0 }
-			end
-		else
-			local t = saturate(-a:Dot(ab) / ab:Dot(ab))
-			return { 1 - t, t }
-		end
-	else
-		return { }
-	end
 end
 
 local function solveSimplex(simplex: { Feature }): (Vector3, number)
@@ -370,26 +255,13 @@ local function solveSimplex(simplex: { Feature }): (Vector3, number)
 	end
 end
 
-local function getFaceInDirection(hull: Hull, direction: Vector3): Face
-	-- Gets a face pointing most in the specified
-	-- direction. Works only for convex stuff
-	local bestFace: Face
-	local bestDot = -math.huge
-
-	for i, face in hull.faces do
-		local dot = face.normal:Dot(direction)
-		if bestDot < dot then
-			bestFace = face
-			bestDot = dot
-		end
-	end
-
-	return bestFace
+local function sign(x: number)
+	return if x > 0.0 then 1.0 else -1.0
 end
 
 return function(
-	hullA: Hull.Hull,
-	hullB: Hull.Hull
+	hullA: Hull.SupportHull,
+	hullB: Hull.SupportHull
 ): Contact?
 	debug.profilebegin("narrowphase::incremental")
 
@@ -418,7 +290,7 @@ return function(
 		direction, flags = solveSimplex(simplex)
 
 		local distanceSquared = direction:Dot(direction) + EPSILON
-		if direction:Dot(direction) < EPSILON then
+		if direction == Vector3.zero then
 			-- Converged through a collision...
 			break
 		elseif previousDist - distanceSquared < EPSILON * previousDist then
@@ -435,44 +307,44 @@ return function(
 		-- If we intersect the origin, we do not do anything.
 		-- We could pass this onto EPA if we wanted to
 		debug.profileend()
-		return nil
+		return getContactEpa(
+			simplex,
+			hullA,
+			hullB
+		)
 	elseif #simplex == 4 then
 		direction, flags = solveSimplex(simplex)
 		siftFromBits(simplex, flags)
 	end
 
-	-- Generate barycentric coordinates
-	--local relative = barycentric(simplex)
-	--local simplexA = {}
-	--local simplexB = {}
-	--for i, feature in simplex do
-	--	table.insert(simplexA, feature.pA)
-	--	table.insert(simplexB, feature.pB)
-	--end
-
-	--local pA = cartesian(simplexA, relative)
-	--local pB = cartesian(simplexB, relative)
-
-	-- Get the closest point on this simplex
-	local point = solveSimplex(simplex)
-	--local point = pA - pB
-	local unit = point.Unit
-	local faceA = getFaceInDirection(hullA, -unit)
-	local faceB = getFaceInDirection(hullB, unit)
-
-	local distance = math.abs(point:Dot(faceA.normal))
-
-	local contact = clipHullFaces(hullB, hullA, faceB, COLLISION_SLOP)
 	debug.profileend()
+	
+	local coordinates = barycentric(simplex)
+	local length = #simplex
+	
+	-- Get the simplex
+	local simplexA = table.create(length, Vector3.zero)
+	local simplexB = table.create(length, Vector3.zero)
+	
+	for i, feature in simplex do
+		simplexA[i] = feature.pA
+		simplexB[i] = feature.pB
+	end
+	
+	local pA = cartesian(simplexA, coordinates)
+	local pB = cartesian(simplexB, coordinates)
+	local delta = pA - pB
+	local separation = MARGIN - delta.Magnitude
 
+	if separation < -EPSILON then
+		return nil
+	end
+	
 	return {
-		sepA = -distance,
-		axisA = -faceB.normal,
+		sep = separation,
+		axis = delta.Unit * sign(delta:Dot(centerA - centerB)),
 
-		sepB = -distance,
-		axisB = faceB.normal,
-
-		contactA = contact,
-		contactB = contact,
+		contactA = { pA },
+		contactB = { pB },
 	}
 end
