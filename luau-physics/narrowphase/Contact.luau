@@ -105,6 +105,8 @@ local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
 end
 
 local function safeUnit(v: Vector3): Vector3
+	-- Only get the unit vector if
+	-- its length is greater than sqrt(1e-3)
 	if v:Dot(v) < 1e-3 then
 		return Vector3.zero
 	else

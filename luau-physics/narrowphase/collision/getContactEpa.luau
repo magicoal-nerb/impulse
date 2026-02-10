@@ -31,7 +31,7 @@ export type Contact = {
 }
 
 local EPA_MAX_ITRS = 16
-local EPSILON = 1e-3
+local EPSILON = 1e-1
 
 local function encode(a: number, b: number): number
 	-- Encodes the verticies
@@ -53,7 +53,6 @@ return function(
 	hullA: Hull.Hull,
 	hullB: Hull.Hull
 ): Contact?
-	print("CALLED EPA")
 	local suppA = hullA.support
 	local suppB = hullB.support
 	
@@ -84,11 +83,15 @@ return function(
 		normals[i] = normal.Unit
 	end
 	
+	local bestDistance = math.huge
+	local bestTriangle = 1
+	local bestDepth = 0.0
+	
 	for i = 1, EPA_MAX_ITRS do
 		-- First, we check for the closest triangle
 		-- that encloses this simplex
-		local bestDistance = normals[1]:Dot(simplex[mesh[1][1]].delta)
-		local bestTriangle = 1
+		bestDistance = normals[1]:Dot(simplex[mesh[1][1]].delta)
+		bestTriangle = 1
 		
 		for j = 2, #normals do
 			local normal = normals[j]
@@ -108,32 +111,9 @@ return function(
 		local featureA = suppA(normal)
 		local point = featureA - featureB
 		
-		local distance = math.abs(normal:Dot(point) - bestDistance)
-		if math.abs(distance) < EPSILON then
-			-- We will assume this triangle is on the surface
-			-- in order to terminate the algorithm. This may not be
-			-- entirely correct, but we can fix it next tick.
-			local pointA = simplex[mesh[bestTriangle][1]]
-			local pointB = simplex[mesh[bestTriangle][2]]
-			local pointC = simplex[mesh[bestTriangle][3]]
-
-			local coordinates = barycentric({ pointA, pointB, pointC })
-			local simplexA = { pointA.pA, pointB.pA, pointC.pA }
-			local simplexB = { pointA.pB, pointB.pB, pointC.pB }
-
-			local pA = cartesian(simplexA, coordinates)
-			local pB = cartesian(simplexB, coordinates)
-			local sep = (pA - pB):Dot(normal)
-
-			print(sep)
-
-			return {
-				sep = sep,
-				axis = -normal,
-
-				contactA = { pA },
-				contactB = { pB },
-			}
+		local depth = math.abs(normal:Dot(point) - bestDistance)
+		if depth < EPSILON then
+			break
 		end
 		
 		-- Otherwise, we will add this new point by creating
@@ -205,5 +185,43 @@ return function(
 		mesh = newMesh
 	end
 	
-	return nil
+
+	-- We will assume this triangle is on the surface
+	-- in order to terminate the algorithm. This may not be
+	-- entirely correct, but we can fix it next tick.
+	bestDistance = normals[1]:Dot(simplex[mesh[1][1]].delta)
+	bestTriangle = 1
+
+	for j = 2, #normals do
+		local normal = normals[j]
+		local point = simplex[mesh[j][1]].delta
+
+		local distance = point:Dot(normal)
+		if bestDistance > distance then
+			bestDistance = distance
+			bestTriangle = j
+		end
+	end
+	
+	local pointA = simplex[mesh[bestTriangle][1]]
+	local pointB = simplex[mesh[bestTriangle][2]]
+	local pointC = simplex[mesh[bestTriangle][3]]
+	
+	local normal = normals[bestTriangle]
+
+	local coordinates = barycentric({ pointA, pointB, pointC })
+	local simplexA = { pointA.pA, pointB.pA, pointC.pA }
+	local simplexB = { pointA.pB, pointB.pB, pointC.pB }
+
+	local pA = cartesian(simplexA, coordinates)
+	local pB = cartesian(simplexB, coordinates)
+	local sep = (pB - pA):Dot(normal)
+
+	return {
+		sep = sep,
+		axis = -normal,
+
+		contactA = { pA },
+		contactB = { pB },
+	}
 end
