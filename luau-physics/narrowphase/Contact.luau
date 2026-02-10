@@ -47,6 +47,8 @@ local Body = require("../Body")
 local FLAG_NORMAL = 0x1
 local FLAG_TANGENT = 0x2
 
+local ROLL_DAMPEN = 0.05
+
 local Jacobian = {}
 local Contact = {}
 Contact.__index = Contact
@@ -102,6 +104,14 @@ local function getOrthogonal(normal: Vector3): (Vector3, Vector3)
 	end
 end
 
+local function safeUnit(v: Vector3): Vector3
+	if v:Dot(v) < 1e-3 then
+		return Vector3.zero
+	else
+		return v.Unit
+	end
+end
+
 local function solveJacobian(
 	self: Jacobian,
 	contact: Contact,
@@ -127,6 +137,8 @@ local function solveJacobian(
 		-- apply friction
 		local friction = contact.friction * contact.jN.totLambda
 		self.totLambda = math.clamp(self.totLambda + lambda, -friction, friction)
+		a.angularVelocity -= a.invInertia * safeUnit(a.angularVelocity) * ROLL_DAMPEN * friction
+		b.angularVelocity -= b.invInertia * safeUnit(b.angularVelocity) * ROLL_DAMPEN * friction
 	else
 		-- clamp lambda >= 0
 		self.totLambda = math.max(self.totLambda + lambda, 0.0)
@@ -255,9 +267,9 @@ function Contact.update(
 	self.rA = rA
 	self.rB = rB
 	
+	initJacobian(self.jN, bodyA, bodyB, normal, rA, rB, FLAG_NORMAL, depth)
 	initJacobian(self.jB, bodyA, bodyB, bitangent, rA, rB, FLAG_TANGENT, depth)
 	initJacobian(self.jT, bodyA, bodyB, tangent, rA, rB, FLAG_TANGENT, depth)
-	initJacobian(self.jN, bodyA, bodyB, normal, rA, rB, FLAG_NORMAL, depth)
 end
 
 function Contact.new(

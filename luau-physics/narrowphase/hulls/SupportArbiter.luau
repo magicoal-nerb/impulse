@@ -1,7 +1,7 @@
 --!native
 --!strict
 
-local getContantGjk = require("../collision/getContantGjk")
+local getContactGjk = require("../collision/getContactGjk")
 local getContactEpa = require("../collision/getContactEpa")
 
 local Contact = require("../Contact")
@@ -25,7 +25,7 @@ export type SupportArbiter = typeof(setmetatable({} :: {
 }, SupportArbiter))
 
 function SupportArbiter.new(shapeA: Body, shapeB: Body): SupportArbiter?
-	local manifold = getContantGjk(shapeA.hull, shapeB.hull)
+	local manifold = getContactGjk(shapeA.hull, shapeB.hull)
 	if not manifold then
 		-- No contact possible, so do not
 		-- use this.
@@ -67,7 +67,7 @@ function SupportArbiter.update(self: SupportArbiter, dt: number): SupportArbiter
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
 
-	local manifold = getContantGjk(shapeA.hull, shapeB.hull)
+	local manifold = getContactGjk(shapeA.hull, shapeB.hull)
 	if not manifold then
 		-- No contact possible, so do not
 		-- use this.

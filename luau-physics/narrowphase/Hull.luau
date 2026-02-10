@@ -7,14 +7,18 @@ export type Hull = {
 	-- Hull abstract base class :3
 	new: (...any) -> Hull,
 	update: (Hull, CFrame, Vector3) -> (),
-	raycast: (Hull, number, Vector3, Vector3) -> (),
+	raycast: (Hull, Vector3, Vector3) -> (number, Vector3, Vector3),
+	
+	-- fields
+	support: (Vector3) -> Vector3,
+	center: Vector3,
 }
 
 export type Support = SupportHull.Support
 export type Face = MeshHull.Face
 
-export type SupportHull = SupportHull.SupportHull & Hull
-export type MeshHull = MeshHull.MeshHull & Hull
+export type SupportHull = SupportHull.SupportHull
+export type MeshHull = MeshHull.MeshHull
 
 return {
 	SupportHull = SupportHull,

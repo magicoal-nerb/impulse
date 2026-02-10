@@ -7,9 +7,11 @@ local getContactPersistent = require("../collision/getContactPersistent")
 local getContactManifold = require("../collision/getContactManifold")
 local areHullsColliding = require("../collision/areHullsColliding")
 
+local MeshHull = require("./MeshHull")
 local Contact = require("../Contact")
 local Body = require("../../Body")
 
+export type MeshHull = MeshHull.MeshHull
 export type Contact = Contact.Contact
 export type Body = Body.Body
 
@@ -63,7 +65,11 @@ function MeshArbiter.new(shapeA: Body, shapeB: Body): MeshArbiter?
 		return nil
 	end
 
-	local manifold = getContactManifold(shapeA.hull, shapeB.hull)
+	local manifold = getContactManifold(
+		shapeA.hull :: MeshHull,
+		shapeB.hull :: MeshHull
+	)
+	
 	if not manifold then
 		return nil
 	end
@@ -148,11 +154,19 @@ function MeshArbiter.update(self: MeshArbiter, dt: number): MeshArbiter?
 	local shapeA = self.shapeA
 	local shapeB = self.shapeB
 
-	local contact = getContactPersistent(shapeA.hull, shapeB.hull, -self.normal)
+	local contact = getContactPersistent(
+		shapeA.hull :: MeshHull,
+		shapeB.hull :: MeshHull,
+		-self.normal
+	)
 	if not contact then
 		-- The face contact failed.
 		-- So, try doing the brute force.
-		local bruteForce = getContactManifold(shapeA.hull, shapeB.hull)
+		local bruteForce = getContactManifold(
+			shapeA.hull :: MeshHull,
+			shapeB.hull :: MeshHull
+		)
+		
 		if not bruteForce then
 			return nil
 		end

@@ -1,7 +1,7 @@
 --!strict
 
 local COLLISION_SLOP = 1e-2
-local GJK_MAX_ITRS = 32
+local GJK_MAX_ITRS = 16
 local EPSILON = 1e-3
 local MARGIN = 0.1
 
@@ -260,8 +260,8 @@ local function sign(x: number)
 end
 
 return function(
-	hullA: Hull.SupportHull,
-	hullB: Hull.SupportHull
+	hullA: Hull.Hull,
+	hullB: Hull.Hull
 ): Contact?
 	debug.profilebegin("narrowphase::incremental")
 

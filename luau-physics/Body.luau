@@ -81,6 +81,10 @@ local function getCubeInertia(mass: number, size: Vector3): Vector3
 	) / 12
 end
 
+local function getSphereInertia(mass: number, radius: number): Vector3
+	return Vector3.one * 0.4 * mass * radius * radius
+end
+
 local function getExtentsSize(cframe: CFrame, size: Vector3): (Vector3, Vector3)
 	local halfSize = size * 0.5
 	local halfAbsSize = cframe.RightVector:Abs() * halfSize.X
@@ -201,7 +205,7 @@ function Body.newDynamic(part: Part, hull: Hull.Hull): Body
 		
 		-- surface props
 		restitution = 0.45,
-		friction = 0.4 * 2,
+		friction = 0.4,
 		beta = 0.32,
 	}
 end

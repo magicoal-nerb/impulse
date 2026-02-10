@@ -337,6 +337,7 @@ function World.integrateBodies(dt: number)
 		-- add rotation
 		local body = bodies[id]
 		local deltaAngularVelocity = (body.angularVelocity + body.angularMomentum) * dt
+		
 		local halfAngle = deltaAngularVelocity.Magnitude * 0.5
 		if 0.0 < halfAngle then
 			-- this integrates position and rotation
