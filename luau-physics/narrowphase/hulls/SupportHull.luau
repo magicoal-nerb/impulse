@@ -45,6 +45,18 @@ local function createBlockSupport(cframe: CFrame, halfSize: Vector3)
 	end
 end
 
+local function createWedgeSupport(cframe: CFrame, halfSize: Vector3)
+	return function(direction: Vector3)
+		local delta = cframe:VectorToObjectSpace(direction)
+		local sign = delta:Sign()
+		if sign.Z < 1.0 then
+			sign *= Vector3.new(1, -math.sign(sign.Y), 1)
+		end
+
+		return cframe * (sign * halfSize)
+	end
+end
+
 local function createCylinderSupport(cframe: CFrame, halfSize: Vector3)
 	local radius = math.min(halfSize.Y, halfSize.Z)
 	return function(direction: Vector3)
@@ -67,6 +79,7 @@ end
 
 local PartTypes = table.freeze({
 	[Enum.PartType.Ball] = createBallSupport,
+	[Enum.PartType.Wedge] = createWedgeSupport,
 	[Enum.PartType.Cylinder] = createCylinderSupport,
 })
 

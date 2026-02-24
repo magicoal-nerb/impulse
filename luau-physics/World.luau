@@ -8,7 +8,6 @@ local Bvh = require("./broadphase/Bvh")
 local SupportHull = Hull.SupportHull
 local MeshHull = Hull.MeshHull
 
-local BlockHull = MeshHull.fromObj(require("./shapes/Cube"))
 local Body = require("./Body")
 
 local FLAG_NO_SLEEP = 1
@@ -39,6 +38,12 @@ export type World = {
 	bvh: Bvh,
 }
 
+local MeshHulls = {
+	[Enum.PartType.CornerWedge] = MeshHull.fromObj(require("./shapes/CornerWedge")),
+	[Enum.PartType.Block] = MeshHull.fromObj(require("./shapes/Cube")),
+	[Enum.PartType.Wedge] = MeshHull.fromObj(require("./shapes/Wedge")),
+}
+
 local World = {}
 World.Gravity = 196.2
 World.numActive = 0
@@ -56,17 +61,18 @@ local function shouldSleep(body: Body): boolean
 end
 
 local function createHullFromPart(part: Part): Hull.Hull
-	if part.Shape ~= Enum.PartType.Block then
-		-- Create it from the spherical stuff
-		return SupportHull.new(
-			part.Shape,
+	local mesh = MeshHulls[part.Shape]
+	if mesh then
+		-- Create it from the block hull
+		return MeshHull.new(
+			mesh,
 			part.CFrame,
 			part.Size
 		) :: Hull.Hull
 	else
-		-- Create it from the block hull
-		return MeshHull.new(
-			BlockHull,
+		-- Create it from the spherical stuff
+		return SupportHull.new(
+			part.Shape,
 			part.CFrame,
 			part.Size
 		) :: Hull.Hull

@@ -154,6 +154,8 @@ end
 local function queryFaceDirections(hullA: MeshHull, hullB: MeshHull): (Face, number)
 	local bestDistance = -math.huge
 	local bestFace = 0
+	
+	local delta = hullB.center - hullA.center
 
 	-- It is known for a convex shape, support(face.normal) lies on
 	-- the current face
@@ -161,6 +163,10 @@ local function queryFaceDirections(hullA: MeshHull, hullB: MeshHull): (Face, num
 	for i, face in hullA.faces do
 		-- query the support point
 		local normal = face.normal
+		if normal:Dot(delta) < 0.0 then
+			continue
+		end
+		
 		local vertexA = vertsA[face.verticies[1]]
 		local vertexB = hullB.support(-normal)
 

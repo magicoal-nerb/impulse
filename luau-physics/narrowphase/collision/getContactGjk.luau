@@ -1,7 +1,7 @@
 --!strict
 
 local COLLISION_SLOP = 1e-2
-local GJK_MAX_ITRS = 16
+local GJK_MAX_ITRS = 12
 local EPSILON = 1e-3
 local MARGIN = 0.1
 

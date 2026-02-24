@@ -12,6 +12,7 @@ return {
 	
 	-- states
 	Freefall = require("@self/states/Freefall"),
+	Climbing = require("@self/states/Climbing"),
 	Jumping = require("@self/states/Jumping"),
 	Running = require("@self/states/Running"),
 }

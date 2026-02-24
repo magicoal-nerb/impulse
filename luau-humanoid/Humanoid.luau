@@ -57,6 +57,9 @@ export type FloorResult = {
 	-- if no floor is present
 	part: BasePart?,
 	
+	-- has a floor?
+	hasFloor: boolean,
+	
 	-- average raycast floor position
 	position: Vector3,
 	
@@ -92,6 +95,8 @@ export type Humanoid = typeof(setmetatable({} :: {
 	
 	-- used for state
 	state: Enum.HumanoidStateType,
+	jumpDirection: Vector3,
+	coyoteTimer: number,
 	character: Model,
 	
 	-- used for movement
@@ -168,6 +173,9 @@ function Humanoid.new(rootPart: BasePart): Humanoid
 		walkSpeed = 16.0,
 		jumpPower = 50.0,
 		
+		jumpDirection = Vector3.zero,
+		coyoteTimer = 0.0,
+		
 		-- mouselock
 		lookAngle = Vector3.zAxis,
 		mouselock = false,
@@ -224,29 +232,40 @@ function Humanoid.computeBalanceTorque(self: Humanoid, dt: number)
 end
 
 function Humanoid.computeRunningForce(self: Humanoid, dt: number): Vector3
-	local kP = 150
+	local maxVerticalForce = 10000
+	local kP = 100
 	
 	local desiredVelocity = self:getDesiredVelocity()
-	local floorPart = self.floorResult.part
-	local maxForce = if floorPart
-		then 250
-		else 143
-	
-	-- get the desired acceleration and clamp
 	local desiredAccel = kP * (desiredVelocity - self.linearVelocity)
+	
 	local horizontal = desiredAccel * VEC_XZ
+	local vertical = Vector3.yAxis * math.clamp(
+		desiredAccel.Y,
+		-maxVerticalForce,
+		maxVerticalForce
+	)
+		
+	local maxForce = if self.floorResult.hasFloor
+		then 250.0
+		else 143.0
+	
 	if horizontal:Dot(horizontal) > maxForce * maxForce then
-		-- reached max force, clamp it please
+		-- reach max force, clamp it!
 		horizontal = horizontal.Unit * maxForce
 	end
 	
-	local deltaForce = self.mass * horizontal
-	if floorPart then
+	local desiredPlane = if self.ladderResult.hasLadder
+		then Vector3.one
+		else VEC_XZ
+	
+	local gravity = Vector3.yAxis * World.Gravity
+	local deltaForce = self.mass * (horizontal + vertical + gravity)
+	if self.floorResult.hasFloor then
 		-- apply friction
 		deltaForce *= 0.9
 	end
 	
-	return deltaForce
+	return deltaForce * desiredPlane
 end
 
 function Humanoid.computeBalanceForce(self: Humanoid, dt: number): Vector3
@@ -255,6 +274,9 @@ function Humanoid.computeBalanceForce(self: Humanoid, dt: number): Vector3
 	
 	-- get the current floor
 	local floorResult = self.floorResult
+	if not floorResult.hasFloor then
+		return Vector3.zero
+	end
 	
 	-- calculate acceleration needed to stabilize our
 	-- player onto the ground
@@ -270,7 +292,7 @@ function Humanoid.computeBalanceForce(self: Humanoid, dt: number): Vector3
 	-- add upwards acceleration
 	local gravity = World.Gravity
 	local deltaAccel = (desiredAccel * 0.1)	
-	return Vector3.yAxis * self.mass * deltaAccel
+	return Vector3.yAxis * self.mass * (deltaAccel + gravity)
 end
 
 function Humanoid.changeState(self: Humanoid, state: Enum.HumanoidStateType)
@@ -316,16 +338,16 @@ function Humanoid.updateLadder(self: Humanoid, dt: number)
 	local displacement = 0.5
 	local stepSize = 2.45
 
-	local direction = rootCoord.LookVector * 0.8
+	local direction = rootCoord.LookVector
 	local steps, possible, step, air = math.floor(4 * self.hipHeight), 0, 0, 0
 	local collided = false
 
-	-- Reset the ladder state
+	-- reset the ladder state
 	local ladderResult = self.ladderResult
 	ladderResult.hasLadder = false
 
 	for i = 1, steps do
-		local offset = i * displacement - self.hipHeight
+		local offset = (i - 1) * displacement - self.hipHeight
 		local origin = rootCoord.Position + Vector3.yAxis * offset
 
 		local result = World.raycast(
@@ -336,13 +358,13 @@ function Humanoid.updateLadder(self: Humanoid, dt: number)
 
 		local didCollide = result ~= nil
 		if didCollide ~= collided then
-			-- Collision differed, check the distance
+			-- collision differed, check the distance
 			-- between the points
 			local difference = (step - air) * displacement
 			if didCollide then
-				-- Set it to the current
+				-- set it to the current
 				-- ladder normal
-				ladderResult.normal = result.normal
+				ladderResult.normal = result.Normal
 			end
 
 			collided = didCollide
@@ -350,20 +372,20 @@ function Humanoid.updateLadder(self: Humanoid, dt: number)
 				possible += 1
 			end
 
-			-- Make the step and air
+			-- make the step and air
 			-- the same
 			step = i
 			air = i
 		elseif collided then
-			-- Report the ladder rung
+			-- report the ladder rung
 			step = i
 		else
-			-- Report the air
+			-- report the air
 			air = i
 		end
 	end
 
-	-- Calculate the ladder result
+	-- calculate the ladder result
 	ladderResult.hasLadder = possible >= 2
 end
 
@@ -396,24 +418,15 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	local rotation = self.rootCoord.Rotation
 	local origin = self.rootCoord.Position
 	
-	local hysterisis = math.max(math.abs(self.linearVelocity.Y / 100), 1)
+	local hysterisis = math.max(math.abs(self.linearVelocity.Y / 100), 0.5)
 	hysterisis += self.hipHeight
 
 	local floorResult = self.floorResult
 	local floorPart: LuauPhysics.Body
 	
-	if floorResult.part then
-		-- if there was a floor, add onto
-		-- the hysterisis
-		hysterisis += 1.5
-	else
-		-- if there was no floor, just add onto the hysterisis
-		-- anyways
-		hysterisis += 1.1
-	end
-	
 	-- reset the floor result
 	floorResult.part = nil
+	floorResult.hasFloor = false
 	floorResult.angularVelocity *= 0.0
 	floorResult.linearVelocity *= 0.0
 	floorResult.position *= 0.0
@@ -426,7 +439,7 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 	local direction = -Vector3.yAxis * hysterisis
 	for i, castPoint in CAST_POINTS do
 		if numResults ~= 0 and i == 4 then
-			-- Terminate early
+			-- terminate early
 			break
 		end
 
@@ -461,6 +474,7 @@ function Humanoid.updateFloor(self: Humanoid, dt: number)
 		floorResult.origin = floorPart.cframe.Position
 		
 		floorResult.part = floorPart :: BasePart
+		floorResult.hasFloor = true
 	end
 end
 

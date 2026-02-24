@@ -1,6 +1,9 @@
 --!strict
 local Humanoid = require("../Humanoid")
 
+local COYOTE_HEIGHT = 0.05
+local COYOTE_TIMER = 0.1
+
 local Running = {} :: Humanoid.State
 
 function Running.calculateTorque(self: Humanoid.Humanoid, dt: number): Vector3
@@ -16,18 +19,32 @@ function Running.calculateForce(self: Humanoid.Humanoid, dt: number): Vector3
 end
 
 function Running.update(self: Humanoid.Humanoid, dt: number)
-	if not self.floorResult.part then
-		-- change the state to falling down because
-		-- there are no floors anymore
-		return self:changeState(Enum.HumanoidStateType.Freefall)
-	elseif self.jump then
-		-- the user is requesting to jump
-		return self:changeState(Enum.HumanoidStateType.Jumping)
+	-- check the floor
+	self:updateLadder(dt)
+	self:updateFloor(dt)
+	
+	if not self.floorResult.hasFloor then
+		-- the user is not on the floor, increment
+		-- the coyote timer
+		self.coyoteTimer -= dt
+		if self.coyoteTimer < 0.0 then
+			-- set to freefall, coyote timer ended
+			self:changeState(Enum.HumanoidStateType.Freefall)
+		end
+	elseif self.jump and self.floorResult.distance <= self.hipHeight + COYOTE_HEIGHT then
+		-- the user is requesting to jump.
+		self:changeState(Enum.HumanoidStateType.Jumping)
+	elseif self.ladderResult.hasLadder then
+		-- the user is on a ladder
+		self:changeState(Enum.HumanoidStateType.Climbing)
+	else
+		self.coyoteTimer = COYOTE_TIMER
 	end
 end
 
 function Running.enter(self: Humanoid.Humanoid)
 	-- :3
+	self.coyoteTimer = COYOTE_TIMER
 end
 
 return Humanoid.bindState(Enum.HumanoidStateType.Running, Running)
