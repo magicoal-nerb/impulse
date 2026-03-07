@@ -13,16 +13,13 @@ rojo serve
 ```
 
 ## Features
+- Recreation of Roblox's humanoid physics
 - One shot contact manifold generation
 - Uses sequential impulses to solve contact constraints
 - Optimized broadphase using dynamic BVHs that use tree rotations
-- Warm starting
-- Sleeping
-- Stable solver(check the tests below)
-- Baumgarte Stabilization
-- Built-in collision tests such as GJK/SAT
-- Works with any convex shape, physics models can be specified with a wavefront
-- General shapecasting, raycasting, and blockcasting(beats Roblox's query performance suprisingly...)
+- Warm starting, sleeping, stable box stacking
+- Works with any convex shape, models can be specified with a wavefront or support function
+- General shapecasting, raycasting, and blockcasting (can outperform Roblox's query performance suprisingly...)
 
 ## Goals
 - Creating an efficient physics engine in Luau
@@ -36,8 +33,8 @@ rojo serve
 - Dynamic contact islands
 - Experimenting with block solving contact points under PGS/direct solves if sufficient
 - Other constraints such as hinges, prismatic constraints, etc...
-- Islands that group up other bodies(similar to how Welds work)
-- Incremental manifold building
+- Specialized narrowphase checks for primitives
+- Weld graph
 
 ## Showcase
 https://github.com/user-attachments/assets/2ed574bd-29b7-4d0d-9e25-926b3e5598dd
