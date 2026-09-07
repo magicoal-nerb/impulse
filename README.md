@@ -4,7 +4,7 @@ It also aims to fully reimplement Roblox's humanoid physics
 
 ## Notice!
 - This project is mostly for demonstrating how to create a physics engine.
-- No longer updated as I am currently working on a SIMD reliant version of this engine in raw C (Impulse2 is currently a TGS-soft implementation that was popularized by Box2D and supports all of Roblox's constraints and body movers. API should be roughly the same as in Impulse.)
+- No longer updated as I am currently working on a SIMD reliant version of this engine in raw C (Impulse2 is currently a TGS-soft implementation that was popularized by Box2D. It supports all of Roblox's constraints and body movers, and is much more stable than Impulse1. API should be roughly the same as in Impulse. It is also significantly faster too, competing with Box3D in terms of performance.)
 
 ## Usage
 This project uses [Roblox Studio](https://github.com/lune-org/lune) to visualize, although any environment that uses [Luau](https://luau.org/) will work.
