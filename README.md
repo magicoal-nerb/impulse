@@ -2,6 +2,10 @@
 Luau physics engine that works off of sequential impulses.   
 It also aims to fully reimplement Roblox's humanoid physics   
 
+## Notice!
+- This project is mostly for demonstrating how to create a physics engine.
+- No longer updated as I am currently working on a SIMD reliant version of this engine in raw C (Impulse2 is currently a TGS-soft implementation that was popularized by Box2D and supports all of Roblox's constraints and body movers. API should be roughly the same as in Impulse.)
+
 ## Usage
 This project uses [Roblox Studio](https://github.com/lune-org/lune) to visualize, although any environment that uses [Luau](https://luau.org/) will work.
 This project can be built through [Rojo](https://rojo.space)
